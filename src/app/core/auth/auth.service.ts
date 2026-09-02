@@ -1,6 +1,6 @@
 import { HttpClient } from '@angular/common/http';
 import { computed, Injectable, inject, signal } from '@angular/core';
-import { Observable, catchError, finalize, of, share, tap } from 'rxjs';
+import { Observable, catchError, finalize, map, of, share, tap } from 'rxjs';
 import { AuthSessionSummary, CurrentUser, InvitationValidation } from './models';
 
 const BASE = '/api/v1/auth';
@@ -98,6 +98,26 @@ export class AuthService {
 
   acceptInvitation(token: string, password: string): Observable<void> {
     return this.http.post<void>(`${BASE}/invitations/accept`, { token, password });
+  }
+
+  /**
+   * Always hits the network (unlike ensureLoaded, which caches). Used for
+   * periodic "is this device still logged in?" polling — see
+   * layout/sidebar-layout/sidebar-layout.ts (used by every role's shell)
+   * — so a session revoked from another device/browser gets noticed without
+   * the user having to refresh the page. A 401 here means an in-flight
+   * request already went through the auth interceptor's refresh-then-retry
+   * logic and still failed, i.e. the session is genuinely gone.
+   */
+  checkSessionStillValid(): Observable<boolean> {
+    return this.http.get<CurrentUser>(`${BASE}/me`).pipe(
+      tap((user) => this.currentUserSignal.set(user)),
+      map(() => true),
+      catchError(() => {
+        this.clearLocalState();
+        return of(false);
+      }),
+    );
   }
 
   /** Called after a hard 401 that a refresh attempt could not recover from. */

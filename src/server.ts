@@ -5,6 +5,7 @@ import {
   writeResponseToNodeResponse,
 } from '@angular/ssr/node';
 import express from 'express';
+import { createProxyMiddleware } from 'http-proxy-middleware';
 import { join } from 'node:path';
 
 const browserDistFolder = join(import.meta.dirname, '../browser');
@@ -13,16 +14,23 @@ const app = express();
 const angularApp = new AngularNodeAppEngine();
 
 /**
- * Example Express Rest API endpoints can be defined here.
- * Uncomment and define endpoints as necessary.
- *
- * Example:
- * ```ts
- * app.get('/api/{*splat}', (req, res) => {
- *   // Handle API request
- * });
- * ```
+ * Forward /api/* to the backend so this server behaves like `ng serve` +
+ * proxy.conf.json (same purpose, different mechanism — this Express server
+ * has no equivalent of the Angular CLI dev-server's built-in proxy). Without
+ * this, requests to /api/* fall through to the Angular catch-all route below
+ * and get redirected/rendered as if they were app URLs instead of reaching
+ * the API. Target is overridable via API_PROXY_TARGET for other environments.
  */
+// Express strips the "/api" mount prefix from req.url before this middleware
+// sees it, so the target must include "/api" itself to end up forwarding to
+// e.g. http://127.0.0.1:4000/api/v1/auth/login instead of .../v1/auth/login.
+app.use(
+  '/api',
+  createProxyMiddleware({
+    target: `${process.env['API_PROXY_TARGET'] || 'http://127.0.0.1:4000'}/api`,
+    changeOrigin: true,
+  }),
+);
 
 /**
  * Serve static files from /browser

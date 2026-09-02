@@ -3,6 +3,7 @@ import { ChangeDetectionStrategy, Component, inject, signal } from '@angular/cor
 import { AbstractControl, FormBuilder, ReactiveFormsModule, ValidationErrors, Validators } from '@angular/forms';
 import { ActivatedRoute, RouterLink } from '@angular/router';
 import { AuthService } from '../../../core/auth/auth.service';
+import { PasswordInput } from '../../../shared/ui/password-input/password-input';
 
 function passwordsMatch(control: AbstractControl): ValidationErrors | null {
   const password = control.get('newPassword')?.value;
@@ -12,7 +13,7 @@ function passwordsMatch(control: AbstractControl): ValidationErrors | null {
 
 @Component({
   selector: 'app-reset-password',
-  imports: [ReactiveFormsModule, RouterLink],
+  imports: [ReactiveFormsModule, RouterLink, PasswordInput],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     <div class="flex min-h-dvh items-center justify-center bg-slate-50 px-4">
@@ -31,25 +32,16 @@ function passwordsMatch(control: AbstractControl): ValidationErrors | null {
           <form class="mt-6 space-y-4" [formGroup]="form" (ngSubmit)="submit()" novalidate>
             <div>
               <label for="newPassword" class="block text-sm font-medium text-slate-700">New password</label>
-              <input
-                id="newPassword"
-                type="password"
-                autocomplete="new-password"
-                formControlName="newPassword"
-                class="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"
-              />
+              <div class="mt-1">
+                <app-password-input inputId="newPassword" autocomplete="new-password" formControlName="newPassword" />
+              </div>
             </div>
 
             <div>
               <label for="confirmPassword" class="block text-sm font-medium text-slate-700">Confirm password</label>
-              <input
-                id="confirmPassword"
-                type="password"
-                autocomplete="new-password"
-                formControlName="confirmPassword"
-                class="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"
-                [attr.aria-invalid]="form.errors?.['mismatch'] && form.controls.confirmPassword.touched"
-              />
+              <div class="mt-1">
+                <app-password-input inputId="confirmPassword" autocomplete="new-password" formControlName="confirmPassword" />
+              </div>
               @if (form.errors?.['mismatch'] && form.controls.confirmPassword.touched) {
                 <p class="mt-1 text-sm text-red-600" role="alert">Passwords do not match.</p>
               }

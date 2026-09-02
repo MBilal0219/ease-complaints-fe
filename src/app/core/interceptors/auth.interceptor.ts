@@ -37,11 +37,23 @@ export const authInterceptor: HttpInterceptorFn = (req, next) => {
       const skipRefresh = NO_REFRESH_RETRY.test(req.url);
 
       if (isHttpError && error.status === 401 && !skipRefresh) {
+        // Was the app under the impression it was logged in before this
+        // request? Guards on public pages (e.g. guestGuard on
+        // /invite/accept/:token) probe /me to check "is someone already
+        // signed in?" — a 401 there is the expected, normal outcome for a
+        // fresh browser, not a session that got revoked, and must NOT force
+        // -navigate away from the public page the guard is about to allow.
+        // Only redirect when the app actually believed there was an active
+        // session and it just turned out not to be true anymore.
+        const wasConsideredAuthenticated = authService.isAuthenticated();
+
         return authService.refresh().pipe(
           switchMap(() => next(outgoing)),
           catchError((refreshError) => {
             authService.clearLocalState();
-            router.navigateByUrl('/login');
+            if (wasConsideredAuthenticated) {
+              router.navigateByUrl('/login');
+            }
             return throwError(() => refreshError);
           }),
         );

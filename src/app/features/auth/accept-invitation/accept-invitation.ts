@@ -1,9 +1,10 @@
 import { HttpErrorResponse } from '@angular/common/http';
 import { ChangeDetectionStrategy, Component, inject, OnInit, signal } from '@angular/core';
 import { AbstractControl, FormBuilder, ReactiveFormsModule, ValidationErrors, Validators } from '@angular/forms';
-import { ActivatedRoute, RouterLink } from '@angular/router';
+import { ActivatedRoute, Router } from '@angular/router';
 import { AuthService } from '../../../core/auth/auth.service';
 import { InvitationValidation } from '../../../core/auth/models';
+import { PasswordInput } from '../../../shared/ui/password-input/password-input';
 
 function passwordsMatch(control: AbstractControl): ValidationErrors | null {
   const password = control.get('password')?.value;
@@ -15,53 +16,95 @@ type ViewState = 'validating' | 'invalid' | 'form' | 'done';
 
 @Component({
   selector: 'app-accept-invitation',
-  imports: [ReactiveFormsModule, RouterLink],
+  imports: [ReactiveFormsModule, PasswordInput],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
-    <div class="flex min-h-dvh items-center justify-center bg-slate-50 px-4">
-      <div class="w-full max-w-sm rounded-xl border border-slate-200 bg-white p-8 shadow-sm">
+    <div class="flex min-h-dvh items-center justify-center bg-gradient-to-br from-indigo-50 via-white to-slate-50 px-4">
+      <div class="w-full max-w-md rounded-2xl border border-slate-200 bg-white p-8 shadow-lg shadow-slate-200/60">
         @switch (state()) {
           @case ('validating') {
-            <p class="text-sm text-slate-500" role="status">Checking your invitation…</p>
+            <div class="flex flex-col items-center py-6 text-center">
+              <div class="h-10 w-10 animate-spin rounded-full border-2 border-slate-200 border-t-indigo-600"></div>
+              <p class="mt-4 text-sm text-slate-500" role="status">Checking your invitation…</p>
+            </div>
           }
           @case ('invalid') {
-            <h1 class="text-xl font-semibold text-slate-900">Invitation not valid</h1>
-            <p class="mt-2 text-sm text-red-600" role="alert">
-              This invitation link is invalid, expired, or has already been used. Ask your
-              administrator to send a new one.
-            </p>
+            <div class="flex flex-col items-center text-center">
+              <div class="flex h-12 w-12 items-center justify-center rounded-full bg-red-50 text-red-600">
+                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" class="h-6 w-6">
+                  <path stroke-linecap="round" stroke-linejoin="round" d="M12 9v3.75m9-.75a9 9 0 1 1-18 0 9 9 0 0 1 18 0Zm-9 3.75h.008v.008H12v-.008Z" />
+                </svg>
+              </div>
+              <h1 class="mt-4 text-lg font-semibold text-slate-900">This invitation isn't valid</h1>
+              <p class="mt-2 text-sm text-slate-500">
+                The link may have expired, already been used, or been revoked. Ask your administrator to send a new one.
+              </p>
+              <button
+                type="button"
+                (click)="goToLogin()"
+                class="mt-6 w-full rounded-md bg-slate-900 px-4 py-2.5 text-center text-sm font-medium text-white hover:bg-slate-800"
+              >
+                Back to sign in
+              </button>
+            </div>
           }
           @case ('done') {
-            <h1 class="text-xl font-semibold text-slate-900">You're all set</h1>
-            <p class="mt-2 text-sm text-slate-700" role="status">Your account is active. You can now sign in.</p>
+            <div class="flex flex-col items-center text-center">
+              <div class="flex h-12 w-12 items-center justify-center rounded-full bg-green-50 text-green-600">
+                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" class="h-6 w-6">
+                  <path stroke-linecap="round" stroke-linejoin="round" d="m4.5 12.75 6 6 9-13.5" />
+                </svg>
+              </div>
+              <h1 class="mt-4 text-lg font-semibold text-slate-900">Your account is ready</h1>
+              <p class="mt-2 text-sm text-slate-500">Your password has been set. You can sign in now.</p>
+              <button
+                type="button"
+                (click)="goToLogin()"
+                class="mt-6 w-full rounded-md bg-indigo-600 px-4 py-2.5 text-sm font-medium text-white hover:bg-indigo-500"
+              >
+                Back to sign in
+              </button>
+            </div>
           }
           @case ('form') {
-            <h1 class="text-xl font-semibold text-slate-900">Set up your account</h1>
-            <p class="mt-1 text-sm text-slate-500">
-              {{ invitation()?.email }} · joining as {{ invitation()?.role }}
-            </p>
+            <div class="text-center">
+              <div class="mx-auto flex h-11 w-11 items-center justify-center rounded-full bg-indigo-50 text-indigo-600">
+                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" class="h-5 w-5">
+                  <path stroke-linecap="round" stroke-linejoin="round" d="M15.75 5.25a3 3 0 0 1 3 3m3 0a6 6 0 0 1-7.029 5.912c-.563-.097-1.159.026-1.563.43L10.5 17.25H8.25v2.25H6v2.25H2.25v-2.818c0-.597.237-1.17.659-1.591l6.499-6.499c.404-.404.527-1 .43-1.563A6 6 0 1 1 21.75 8.25Z" />
+                </svg>
+              </div>
+              <h1 class="mt-3 text-lg font-semibold text-slate-900">Set up your account</h1>
+              <p class="mt-1 text-sm text-slate-500">
+                You've been invited as
+                <span class="font-medium text-slate-700">{{ invitation()?.role }}</span>.
+                Choose a password to finish activating your account.
+              </p>
+            </div>
 
             <form class="mt-6 space-y-4" [formGroup]="form" (ngSubmit)="submit()" novalidate>
               <div>
-                <label for="password" class="block text-sm font-medium text-slate-700">Password</label>
+                <label for="invite-email" class="block text-sm font-medium text-slate-700">Email</label>
                 <input
-                  id="password"
-                  type="password"
-                  autocomplete="new-password"
-                  formControlName="password"
-                  class="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                  id="invite-email"
+                  type="email"
+                  [value]="invitation()?.email"
+                  disabled
+                  class="mt-1 w-full rounded-md border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-500"
                 />
               </div>
 
               <div>
-                <label for="confirmPassword" class="block text-sm font-medium text-slate-700">Confirm password</label>
-                <input
-                  id="confirmPassword"
-                  type="password"
-                  autocomplete="new-password"
-                  formControlName="confirmPassword"
-                  class="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"
-                />
+                <label for="invite-password" class="block text-sm font-medium text-slate-700">Password</label>
+                <div class="mt-1">
+                  <app-password-input inputId="invite-password" autocomplete="new-password" formControlName="password" />
+                </div>
+              </div>
+
+              <div>
+                <label for="invite-confirm-password" class="block text-sm font-medium text-slate-700">Confirm password</label>
+                <div class="mt-1">
+                  <app-password-input inputId="invite-confirm-password" autocomplete="new-password" formControlName="confirmPassword" />
+                </div>
                 @if (form.errors?.['mismatch'] && form.controls.confirmPassword.touched) {
                   <p class="mt-1 text-sm text-red-600" role="alert">Passwords do not match.</p>
                 }
@@ -74,15 +117,13 @@ type ViewState = 'validating' | 'invalid' | 'form' | 'done';
               <button
                 type="submit"
                 [disabled]="form.invalid || submitting()"
-                class="w-full rounded-md bg-indigo-600 px-3 py-2 text-sm font-medium text-white hover:bg-indigo-500 disabled:cursor-not-allowed disabled:opacity-50"
+                class="w-full rounded-md bg-indigo-600 px-3 py-2.5 text-sm font-medium text-white hover:bg-indigo-500 disabled:cursor-not-allowed disabled:opacity-50"
               >
-                {{ submitting() ? 'Creating account…' : 'Activate account' }}
+                {{ submitting() ? 'Activating…' : 'Activate account' }}
               </button>
             </form>
           }
         }
-
-        <a routerLink="/login" class="mt-4 inline-block text-sm text-indigo-600 hover:underline">Back to sign in</a>
       </div>
     </div>
   `,
@@ -91,6 +132,7 @@ export class AcceptInvitationPage implements OnInit {
   private readonly fb = inject(FormBuilder);
   private readonly authService = inject(AuthService);
   private readonly route = inject(ActivatedRoute);
+  private readonly router = inject(Router);
 
   private readonly token = this.route.snapshot.paramMap.get('token') ?? '';
 
@@ -139,5 +181,9 @@ export class AcceptInvitationPage implements OnInit {
         this.errorMessage.set(error.error?.error ?? 'This invitation could not be accepted.');
       },
     });
+  }
+
+  goToLogin(): void {
+    this.router.navigateByUrl('/login');
   }
 }

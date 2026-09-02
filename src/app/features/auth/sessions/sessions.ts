@@ -1,8 +1,17 @@
 import { DatePipe } from '@angular/common';
-import { ChangeDetectionStrategy, Component, inject, OnInit, signal } from '@angular/core';
+import { ChangeDetectionStrategy, Component, DestroyRef, inject, OnInit, signal } from '@angular/core';
+import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { Router } from '@angular/router';
+import { catchError, of, switchMap, timer } from 'rxjs';
 import { AuthService } from '../../../core/auth/auth.service';
 import { AuthSessionSummary } from '../../../core/auth/models';
+
+/**
+ * Polling stand-in for real-time session push (SignalR is out of scope for
+ * this module). Keeps this list close to live — a session created or revoked
+ * from another browser shows up here without a manual refresh.
+ */
+const SESSIONS_POLL_MS = 4_000;
 
 @Component({
   selector: 'app-sessions',
@@ -59,6 +68,7 @@ import { AuthSessionSummary } from '../../../core/auth/models';
 export class SessionsPage implements OnInit {
   private readonly authService = inject(AuthService);
   private readonly router = inject(Router);
+  private readonly destroyRef = inject(DestroyRef);
 
   protected readonly sessions = signal<AuthSessionSummary[]>([]);
   protected readonly loading = signal(true);
@@ -66,18 +76,25 @@ export class SessionsPage implements OnInit {
   protected readonly loggingOutAll = signal(false);
 
   ngOnInit(): void {
-    this.load();
-  }
-
-  private load(): void {
-    this.loading.set(true);
-    this.authService.getSessions().subscribe({
-      next: (sessions) => {
-        this.sessions.set(sessions);
+    // timer(0, ms) fires immediately, then every `ms` — one continuous
+    // subscription doing both the initial load and the live refresh.
+    timer(0, SESSIONS_POLL_MS)
+      .pipe(
+        switchMap(() =>
+          this.authService.getSessions().pipe(
+            // A transient error shouldn't kill the poll loop for the rest of
+            // the page's lifetime — keep the previous list and try again next tick.
+            catchError(() => of(null)),
+          ),
+        ),
+        takeUntilDestroyed(this.destroyRef),
+      )
+      .subscribe((sessions) => {
+        if (sessions) {
+          this.sessions.set(sessions);
+        }
         this.loading.set(false);
-      },
-      error: () => this.loading.set(false),
-    });
+      });
   }
 
   revoke(sessionId: string): void {
@@ -92,7 +109,9 @@ export class SessionsPage implements OnInit {
           return;
         }
         this.revokingId.set(null);
-        this.load();
+        // The poll loop will pick this up within SESSIONS_POLL_MS regardless,
+        // but refreshing right away keeps the click feeling immediate.
+        this.authService.getSessions().subscribe((sessions) => this.sessions.set(sessions));
       },
       error: () => this.revokingId.set(null),
     });

@@ -4,10 +4,11 @@ import { FormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
 import { Router, RouterLink } from '@angular/router';
 import { AuthService } from '../../../core/auth/auth.service';
 import { landingRouteForRoles } from '../../../core/auth/role-landing';
+import { PasswordInput } from '../../../shared/ui/password-input/password-input';
 
 @Component({
   selector: 'app-login',
-  imports: [ReactiveFormsModule, RouterLink],
+  imports: [ReactiveFormsModule, RouterLink, PasswordInput],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     <div class="flex min-h-dvh items-center justify-center bg-slate-50 px-4">
@@ -30,14 +31,9 @@ import { landingRouteForRoles } from '../../../core/auth/role-landing';
 
           <div>
             <label for="password" class="block text-sm font-medium text-slate-700">Password</label>
-            <input
-              id="password"
-              type="password"
-              autocomplete="current-password"
-              formControlName="password"
-              class="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"
-              [attr.aria-invalid]="form.controls.password.invalid && form.controls.password.touched"
-            />
+            <div class="mt-1">
+              <app-password-input inputId="password" autocomplete="current-password" formControlName="password" />
+            </div>
           </div>
 
           @if (errorMessage()) {

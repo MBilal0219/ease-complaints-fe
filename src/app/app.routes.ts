@@ -30,31 +30,50 @@ export const routes: Routes = [
       import('./features/auth/accept-invitation/accept-invitation').then((m) => m.AcceptInvitationPage),
   },
 
+  // Bare /app never renders anything — it just resolves the caller's role
+  // and redirects into that role's own shell below.
   {
     path: 'app',
-    canActivate: [authGuard],
-    loadComponent: () => import('./layout/shell').then((m) => m.Shell),
+    pathMatch: 'full',
+    canActivate: [authGuard, roleLandingRedirectGuard],
+    children: [],
+  },
+
+  // Every role uses the same sidebar shell (layout/sidebar-layout) — only
+  // the nav items differ, set by each role's thin *-shell.ts wrapper.
+  {
+    path: 'app/admin',
+    canActivate: [authGuard, roleGuard(ROLE_ADMIN)],
+    loadComponent: () => import('./features/admin/admin-shell').then((m) => m.AdminShell),
     children: [
-      { path: '', pathMatch: 'full', canActivate: [roleLandingRedirectGuard], children: [] },
-      {
-        path: 'admin',
-        canActivate: [roleGuard(ROLE_ADMIN)],
-        loadComponent: () => import('./features/landing/admin-landing').then((m) => m.AdminLandingPage),
-      },
-      {
-        path: 'developer',
-        canActivate: [roleGuard(ROLE_DEVELOPER)],
-        loadComponent: () => import('./features/landing/developer-landing').then((m) => m.DeveloperLandingPage),
-      },
-      {
-        path: 'user',
-        canActivate: [roleGuard(ROLE_USER)],
-        loadComponent: () => import('./features/landing/user-landing').then((m) => m.UserLandingPage),
-      },
-      {
-        path: 'sessions',
-        loadComponent: () => import('./features/auth/sessions/sessions').then((m) => m.SessionsPage),
-      },
+      { path: '', pathMatch: 'full', redirectTo: 'dashboard' },
+      { path: 'dashboard', loadComponent: () => import('./features/admin/dashboard/dashboard').then((m) => m.DashboardPage) },
+      { path: 'parties', loadComponent: () => import('./features/admin/parties/parties').then((m) => m.PartiesPage) },
+      { path: 'developers', loadComponent: () => import('./features/admin/developers/developers').then((m) => m.DevelopersPage) },
+      { path: 'sessions', loadComponent: () => import('./features/auth/sessions/sessions').then((m) => m.SessionsPage) },
+      { path: 'profile', loadComponent: () => import('./features/profile/profile').then((m) => m.ProfilePage) },
+    ],
+  },
+  {
+    path: 'app/developer',
+    canActivate: [authGuard, roleGuard(ROLE_DEVELOPER)],
+    loadComponent: () => import('./features/developer/developer-shell').then((m) => m.DeveloperShell),
+    children: [
+      { path: '', pathMatch: 'full', redirectTo: 'dashboard' },
+      { path: 'dashboard', loadComponent: () => import('./features/landing/developer-landing').then((m) => m.DeveloperLandingPage) },
+      { path: 'sessions', loadComponent: () => import('./features/auth/sessions/sessions').then((m) => m.SessionsPage) },
+      { path: 'profile', loadComponent: () => import('./features/profile/profile').then((m) => m.ProfilePage) },
+    ],
+  },
+  {
+    path: 'app/user',
+    canActivate: [authGuard, roleGuard(ROLE_USER)],
+    loadComponent: () => import('./features/user/user-shell').then((m) => m.UserShell),
+    children: [
+      { path: '', pathMatch: 'full', redirectTo: 'dashboard' },
+      { path: 'dashboard', loadComponent: () => import('./features/landing/user-landing').then((m) => m.UserLandingPage) },
+      { path: 'sessions', loadComponent: () => import('./features/auth/sessions/sessions').then((m) => m.SessionsPage) },
+      { path: 'profile', loadComponent: () => import('./features/profile/profile').then((m) => m.ProfilePage) },
     ],
   },
 
