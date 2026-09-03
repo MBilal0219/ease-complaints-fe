@@ -6,6 +6,7 @@ import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { Subject, catchError, merge, of, switchMap, timer } from 'rxjs';
 import { AdminService } from '../../../core/admin/admin.service';
 import { PagedResult, PersonSummary } from '../../../core/admin/models';
+import { RouterLink } from '@angular/router';
 import { PartyFormModal } from '../party-form-modal/party-form-modal';
 import { PendingInvitations } from '../pending-invitations/pending-invitations';
 import { Pagination } from '../../../shared/ui/pagination/pagination';
@@ -15,7 +16,7 @@ const POLL_MS = 8_000;
 
 @Component({
   selector: 'app-parties',
-  imports: [DatePipe, FormsModule, PartyFormModal, PendingInvitations, Pagination],
+  imports: [DatePipe, FormsModule, RouterLink, PartyFormModal, PendingInvitations, Pagination],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     <div class="flex flex-wrap items-center justify-between gap-3">
@@ -70,7 +71,7 @@ const POLL_MS = 8_000;
             </thead>
             <tbody class="divide-y divide-slate-100">
               @for (party of result().items; track party.id) {
-                <tr class="hover:bg-slate-50">
+                <tr class="cursor-pointer hover:bg-slate-50" [routerLink]="['/app/admin/parties', party.id]">
                   <td class="px-4 py-2.5 font-medium text-slate-900">{{ party.displayName }}</td>
                   <td class="px-4 py-2.5 text-slate-600">{{ party.email }}</td>
                   <td class="px-4 py-2.5">
