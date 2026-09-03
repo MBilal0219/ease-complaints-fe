@@ -2,7 +2,7 @@ import { DatePipe } from '@angular/common';
 import { ChangeDetectionStrategy, Component, DestroyRef, OnInit, inject, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
-import { RouterLink } from '@angular/router';
+import { ActivatedRoute, Router, RouterLink } from '@angular/router';
 import { Subject, catchError, merge, of, switchMap, timer } from 'rxjs';
 import { TicketsService } from '../../../core/tickets/tickets.service';
 import { PagedResult, TICKET_STATUS_BADGE_CLASSES, TICKET_STATUS_LABELS, TicketDto, TicketStatus, priorityBadgeClasses } from '../../../core/tickets/models';
@@ -124,6 +124,8 @@ export class MyComplaintsPage implements OnInit {
 
   private readonly ticketsService = inject(TicketsService);
   private readonly destroyRef = inject(DestroyRef);
+  private readonly route = inject(ActivatedRoute);
+  private readonly router = inject(Router);
 
   protected search = '';
   protected statusFilter: TicketStatus | '' = '';
@@ -135,6 +137,13 @@ export class MyComplaintsPage implements OnInit {
   private readonly manualRefresh = new Subject<void>();
 
   ngOnInit(): void {
+    // Seeds from the URL once on load — covers the dashboard's stat-card
+    // links as well as a bookmarked/refreshed filtered view. Kept in sync
+    // going forward via onFilterChange, so the URL always matches the screen.
+    const params = this.route.snapshot.queryParamMap;
+    this.statusFilter = (params.get('status') as TicketStatus | null) ?? '';
+    this.search = params.get('search') ?? '';
+
     merge(timer(0, POLL_MS), this.manualRefresh)
       .pipe(
         switchMap(() =>
@@ -160,7 +169,17 @@ export class MyComplaintsPage implements OnInit {
 
   onFilterChange(): void {
     this.page.set(1);
+    this.syncUrl();
     this.manualRefresh.next();
+  }
+
+  /** Keeps the address bar matching what's actually filtered — no navigation/reload, just the query string. */
+  private syncUrl(): void {
+    this.router.navigate([], {
+      relativeTo: this.route,
+      queryParams: { status: this.statusFilter || null, search: this.search || null },
+      replaceUrl: true,
+    });
   }
 
   goToPage(page: number): void {

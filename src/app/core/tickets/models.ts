@@ -141,6 +141,9 @@ export interface StatusOption {
 export const PENDING_STATUSES: TicketStatus[] = ['New', 'Assigned', 'InProgress'];
 export const PENDING_STATUS_QUERY_VALUE = PENDING_STATUSES.join(',');
 
+/// The Developer dashboard's "High priority (incl. Urgent)" card combines two priority names — a synthetic filter value the Kanban table's priority dropdown understands, matching either.
+export const HIGH_OR_URGENT_PRIORITY_VALUE = 'HighOrUrgent';
+
 /**
  * What the Admin status-pill dropdown offers, computed from the ticket's
  * current state — deliberately narrow (the backend enforces the same

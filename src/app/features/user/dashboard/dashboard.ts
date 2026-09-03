@@ -9,16 +9,17 @@ interface StatCard {
   label: string;
   value: (s: PartyDashboardStats) => number;
   accent: string;
+  queryParams?: Record<string, string>;
 }
 
 // No Resolved/Rejected cards — a Party only ever sees New/Assigned/InProgress/Closed/Revoked (see PartyDashboardStats).
 const CARDS: StatCard[] = [
   { label: 'Total Complaints', value: (s) => s.totalComplaints, accent: 'bg-slate-100 text-slate-700' },
-  { label: 'New', value: (s) => s.newCount, accent: 'bg-blue-50 text-blue-700' },
-  { label: 'Assigned', value: (s) => s.assignedCount, accent: 'bg-amber-50 text-amber-700' },
-  { label: 'In Progress', value: (s) => s.inProgressCount, accent: 'bg-purple-50 text-purple-700' },
-  { label: 'Closed', value: (s) => s.closedCount, accent: 'bg-slate-100 text-slate-500' },
-  { label: 'Revoked', value: (s) => s.revokedCount, accent: 'bg-orange-50 text-orange-700' },
+  { label: 'New', value: (s) => s.newCount, accent: 'bg-blue-50 text-blue-700', queryParams: { status: 'New' } },
+  { label: 'Assigned', value: (s) => s.assignedCount, accent: 'bg-amber-50 text-amber-700', queryParams: { status: 'Assigned' } },
+  { label: 'In Progress', value: (s) => s.inProgressCount, accent: 'bg-purple-50 text-purple-700', queryParams: { status: 'InProgress' } },
+  { label: 'Closed', value: (s) => s.closedCount, accent: 'bg-slate-100 text-slate-500', queryParams: { status: 'Closed' } },
+  { label: 'Revoked', value: (s) => s.revokedCount, accent: 'bg-orange-50 text-orange-700', queryParams: { status: 'Revoked' } },
 ];
 
 /** Polling stand-in for real-time stats (SignalR is out of scope for now). */
@@ -44,12 +45,16 @@ const STATS_POLL_MS = 15_000;
     } @else if (stats(); as s) {
       <div class="mt-6 grid grid-cols-2 gap-4 sm:grid-cols-4">
         @for (card of cards; track card.label) {
-          <div class="rounded-lg border border-slate-200 bg-white p-4">
+          <a
+            routerLink="/app/user/my-complaints"
+            [queryParams]="card.queryParams ?? null"
+            class="block rounded-lg border border-slate-200 bg-white p-4 transition-shadow hover:shadow-md hover:border-slate-300"
+          >
             <p class="text-xs font-medium text-slate-500">{{ card.label }}</p>
             <p class="mt-2 inline-flex rounded-md px-2 py-1 text-2xl font-semibold" [class]="card.accent">
               {{ card.value(s) }}
             </p>
-          </div>
+          </a>
         }
       </div>
 
