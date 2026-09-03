@@ -44,3 +44,18 @@ export interface CreateDeveloperRequest {
   email: string;
   password: string;
 }
+
+export interface PersonDetail {
+  id: string;
+  displayName: string;
+  email: string;
+  role: string;
+  isActive: boolean;
+  createdAtUtc: string;
+  lastLoginAtUtc: string | null;
+  location: string | null;
+  branch: string | null;
+  phoneNumber: string | null;
+  openTicketCount: number;
+  totalTicketCount: number;
+}

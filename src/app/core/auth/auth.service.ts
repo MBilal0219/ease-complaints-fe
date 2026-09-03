@@ -84,6 +84,16 @@ export class AuthService {
     return this.http.delete<void>(`${BASE}/sessions/${sessionId}`);
   }
 
+  /** Account-settings "Name/Email" tab — distinct from the invitation/reset-password flows below, which are for a not-yet-authenticated visitor. */
+  updateProfile(displayName: string, email: string): Observable<CurrentUser> {
+    return this.http.patch<CurrentUser>(`${BASE}/me`, { displayName, email }).pipe(tap((user) => this.currentUserSignal.set(user)));
+  }
+
+  /** Requires the current password — for a logged-in user, as opposed to the forgot-password email flow. */
+  changePassword(currentPassword: string, newPassword: string): Observable<void> {
+    return this.http.post<void>(`${BASE}/change-password`, { currentPassword, newPassword });
+  }
+
   forgotPassword(email: string): Observable<unknown> {
     return this.http.post(`${BASE}/forgot-password`, { email });
   }
