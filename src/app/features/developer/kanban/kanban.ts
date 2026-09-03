@@ -2,10 +2,17 @@ import { DatePipe } from '@angular/common';
 import { ChangeDetectionStrategy, Component, DestroyRef, OnInit, computed, inject, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
-import { RouterLink } from '@angular/router';
+import { ActivatedRoute, Router, RouterLink } from '@angular/router';
 import { Subject, catchError, merge, of, switchMap, timer } from 'rxjs';
 import { TicketsService } from '../../../core/tickets/tickets.service';
-import { TICKET_STATUS_BADGE_CLASSES, TICKET_STATUS_LABELS, TicketDto, TicketStatus, priorityBadgeClasses } from '../../../core/tickets/models';
+import {
+  HIGH_OR_URGENT_PRIORITY_VALUE,
+  TICKET_STATUS_BADGE_CLASSES,
+  TICKET_STATUS_LABELS,
+  TicketDto,
+  TicketStatus,
+  priorityBadgeClasses,
+} from '../../../core/tickets/models';
 import { Pagination } from '../../../shared/ui/pagination/pagination';
 
 const POLL_MS = 8_000;
@@ -25,6 +32,9 @@ const COLUMNS: Column[] = [
   { status: 'Resolved', title: 'Resolved', accent: 'border-t-green-400', isDropTarget: true },
   { status: 'Rejected', title: 'Rejected', accent: 'border-t-red-400', isDropTarget: true },
 ];
+
+/** A developer's tickets are always one of these — New/Revoked never apply once a developer is assigned. */
+const STATUS_FILTER_OPTIONS: TicketStatus[] = ['Assigned', 'InProgress', 'Resolved', 'Rejected', 'Closed'];
 
 type ViewMode = 'board' | 'table';
 
@@ -47,7 +57,7 @@ type ViewMode = 'board' | 'table';
       <div class="inline-flex rounded-md border border-slate-300 bg-white p-0.5 text-sm">
         <button
           type="button"
-          (click)="viewMode.set('board')"
+          (click)="viewMode.set('board'); syncUrl()"
           class="rounded px-3 py-1.5 font-medium"
           [class]="viewMode() === 'board' ? 'bg-indigo-600 text-white' : 'text-slate-600 hover:bg-slate-50'"
         >
@@ -55,7 +65,7 @@ type ViewMode = 'board' | 'table';
         </button>
         <button
           type="button"
-          (click)="viewMode.set('table')"
+          (click)="viewMode.set('table'); syncUrl()"
           class="rounded px-3 py-1.5 font-medium"
           [class]="viewMode() === 'table' ? 'bg-indigo-600 text-white' : 'text-slate-600 hover:bg-slate-50'"
         >
@@ -65,12 +75,25 @@ type ViewMode = 'board' | 'table';
     </div>
 
     <div class="mt-4 flex flex-wrap items-center gap-2">
+      @if (viewMode() === 'table') {
+        <select
+          [ngModel]="statusFilter()"
+          (ngModelChange)="statusFilter.set($event); tablePage.set(1); syncUrl()"
+          class="rounded-md border border-slate-300 bg-white py-1.5 pl-3 pr-8 text-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+        >
+          <option value="">All statuses</option>
+          @for (status of statusFilterOptions; track status) {
+            <option [value]="status">{{ statusLabels[status] }}</option>
+          }
+        </select>
+      }
       <select
         [ngModel]="priorityFilter()"
-        (ngModelChange)="priorityFilter.set($event); tablePage.set(1)"
+        (ngModelChange)="priorityFilter.set($event); tablePage.set(1); syncUrl()"
         class="rounded-md border border-slate-300 bg-white py-1.5 pl-3 pr-8 text-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"
       >
         <option value="">All priorities</option>
+        <option [value]="highOrUrgent">High or Urgent</option>
         @for (priority of priorityOptions(); track priority) {
           <option [value]="priority">{{ priority }}</option>
         }
@@ -188,11 +211,15 @@ export class KanbanPage implements OnInit {
   protected readonly columns = COLUMNS;
   protected readonly statusLabels = TICKET_STATUS_LABELS;
   protected readonly statusClasses = TICKET_STATUS_BADGE_CLASSES;
+  protected readonly statusFilterOptions = STATUS_FILTER_OPTIONS;
   protected readonly priorityClasses = priorityBadgeClasses;
+  protected readonly highOrUrgent = HIGH_OR_URGENT_PRIORITY_VALUE;
   protected readonly tablePageSizeValue = TABLE_PAGE_SIZE;
 
   private readonly ticketsService = inject(TicketsService);
   private readonly destroyRef = inject(DestroyRef);
+  private readonly route = inject(ActivatedRoute);
+  private readonly router = inject(Router);
 
   protected readonly allTickets = signal<TicketDto[]>([]);
   protected readonly draggingId = signal<string | null>(null);
@@ -202,6 +229,7 @@ export class KanbanPage implements OnInit {
   protected readonly tablePage = signal(1);
   protected readonly search = signal('');
   protected readonly priorityFilter = signal('');
+  protected readonly statusFilter = signal<TicketStatus | ''>('');
 
   protected readonly priorityOptions = computed(() =>
     [...new Set(this.allTickets().map((t) => t.priorityName))].sort(),
@@ -209,12 +237,20 @@ export class KanbanPage implements OnInit {
 
   // Client-side — the developer board/table already fetches up to 200
   // tickets in one page, so a second network round trip per filter change
-  // isn't worth it.
+  // isn't worth it. statusFilter only applies in table view — the board's
+  // columns are already the status grouping, so it's hidden (not reset)
+  // when switching back to board, and ignored here to match.
   private readonly filteredTickets = computed(() => {
     const term = this.search().trim().toLowerCase();
     const priority = this.priorityFilter();
+    const status = this.viewMode() === 'table' ? this.statusFilter() : '';
     return this.allTickets().filter((t) => {
-      if (priority && t.priorityName !== priority) return false;
+      if (status && t.status !== status) return false;
+      if (priority === HIGH_OR_URGENT_PRIORITY_VALUE) {
+        if (t.priorityName !== 'High' && t.priorityName !== 'Urgent') return false;
+      } else if (priority && t.priorityName !== priority) {
+        return false;
+      }
       if (term && !t.title.toLowerCase().includes(term) && !t.categoryName.toLowerCase().includes(term)) return false;
       return true;
     });
@@ -230,6 +266,17 @@ export class KanbanPage implements OnInit {
   private readonly manualRefresh = new Subject<void>();
 
   ngOnInit(): void {
+    // Seeds from the URL once on load — covers the dashboard's stat-card
+    // links (?view=table&status=X or &priority=Urgent|HighOrUrgent) as well
+    // as a bookmarked/refreshed filtered view. Kept in sync going forward
+    // via syncUrl(), so the URL always matches what's on screen.
+    const params = this.route.snapshot.queryParamMap;
+    if (params.get('view') === 'table' || params.has('status') || params.has('priority')) {
+      this.viewMode.set('table');
+    }
+    this.statusFilter.set((params.get('status') as TicketStatus | null) ?? '');
+    this.priorityFilter.set(params.get('priority') ?? '');
+
     merge(timer(0, POLL_MS), this.manualRefresh)
       .pipe(
         switchMap(() =>
@@ -240,6 +287,19 @@ export class KanbanPage implements OnInit {
       .subscribe((result) => {
         if (result) this.allTickets.set(result.items);
       });
+  }
+
+  /** Keeps the address bar matching what's actually filtered/viewed — no navigation/reload, just the query string. */
+  syncUrl(): void {
+    this.router.navigate([], {
+      relativeTo: this.route,
+      queryParams: {
+        view: this.viewMode() === 'table' ? 'table' : null,
+        status: this.statusFilter() || null,
+        priority: this.priorityFilter() || null,
+      },
+      replaceUrl: true,
+    });
   }
 
   ticketsFor(status: TicketStatus) {
