@@ -1,3 +1,99 @@
 /* You can add global styles to this file, and also import other style files */
 
 @import 'tailwindcss';
+
+/* POS receipt printing — see features/user/pos-terminal. Same technique as
+   the tailwind-pos reference: everything on the page gets `.pos-hide-print`
+   except a normally-empty `#pos-print-area` that only the receipt's HTML
+   gets copied into right before window.print() is called. */
+.pos-print-area {
+  display: none;
+}
+@media print {
+  .pos-hide-print {
+    display: none !important;
+  }
+  .pos-print-area {
+    display: block !important;
+  }
+}
+
+/* ---------------------------------------------------------------------
+ * Exact tailwind-pos palette (see tailwind-pos/css/style.css and
+ * docs/modules/pos-terminal-ui.md). Tailwind's own built-in cyan is close
+ * but not hex-identical to tailwind-pos's Material cyan scale, and modern
+ * Tailwind dropped "blue-gray" entirely (renamed/replaced by "slate", a
+ * different scale) — so both are declared here, after the `@import
+ * 'tailwindcss'` above, to win the cascade at equal selector specificity.
+ * cyan-* overrides Tailwind's own generated utility outright (cyan is
+ * POS-only in this app, so this is safe app-wide); blue-gray-* is
+ * additive — new classes, not a slate override — so the rest of the app
+ * (already built on slate) is untouched; the Terminal's own template
+ * opts into blue-gray-* explicitly where it wants literal parity with
+ * the reference instead of Tailwind's slate approximation.
+ * --------------------------------------------------------------------- */
+::-webkit-scrollbar {
+  width: 5px;
+}
+::-webkit-scrollbar-track {
+  background: #cfd8dc;
+  border-radius: 5px;
+}
+::-webkit-scrollbar-thumb {
+  background: #b0bec5;
+  border-radius: 5px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #90a4ae;
+}
+
+.bg-cyan-50, .hover\:bg-cyan-50:hover { background-color: #e0f7fa; }
+.bg-cyan-100, .hover\:bg-cyan-100:hover { background-color: #b2ebf2; }
+.bg-cyan-200, .hover\:bg-cyan-200:hover { background-color: #80deea; }
+.bg-cyan-300, .hover\:bg-cyan-300:hover { background-color: #4dd0e1; }
+.bg-cyan-400, .hover\:bg-cyan-400:hover { background-color: #26c6da; }
+.bg-cyan-500, .hover\:bg-cyan-500:hover { background-color: #00bcd4; }
+.bg-cyan-600, .hover\:bg-cyan-600:hover { background-color: #00acc1; }
+.bg-cyan-700, .hover\:bg-cyan-700:hover { background-color: #0097a7; }
+.bg-cyan-800, .hover\:bg-cyan-800:hover { background-color: #00838f; }
+.bg-cyan-900, .hover\:bg-cyan-900:hover { background-color: #006064; }
+
+.text-cyan-50, .hover\:text-cyan-50:hover { color: #e0f7fa; }
+.text-cyan-100, .hover\:text-cyan-100:hover { color: #b2ebf2; }
+.text-cyan-200, .hover\:text-cyan-200:hover { color: #80deea; }
+.text-cyan-300, .hover\:text-cyan-300:hover { color: #4dd0e1; }
+.text-cyan-400, .hover\:text-cyan-400:hover { color: #26c6da; }
+.text-cyan-500, .hover\:text-cyan-500:hover { color: #00bcd4; }
+.text-cyan-600, .hover\:text-cyan-600:hover { color: #00acc1; }
+.text-cyan-700, .hover\:text-cyan-700:hover { color: #0097a7; }
+.text-cyan-800, .hover\:text-cyan-800:hover { color: #00838f; }
+.text-cyan-900, .hover\:text-cyan-900:hover { color: #006064; }
+
+.bg-blue-gray-50, .hover\:bg-blue-gray-50:hover { background-color: #eceff1; }
+.bg-blue-gray-100, .hover\:bg-blue-gray-100:hover { background-color: #cfd8dc; }
+.bg-blue-gray-200, .hover\:bg-blue-gray-200:hover { background-color: #b0bec5; }
+.bg-blue-gray-300, .hover\:bg-blue-gray-300:hover { background-color: #90a4ae; }
+.bg-blue-gray-400, .hover\:bg-blue-gray-400:hover { background-color: #78909c; }
+.bg-blue-gray-500, .hover\:bg-blue-gray-500:hover { background-color: #607d8b; }
+.bg-blue-gray-600, .hover\:bg-blue-gray-600:hover { background-color: #546e7a; }
+.bg-blue-gray-700, .hover\:bg-blue-gray-700:hover { background-color: #455a64; }
+.bg-blue-gray-800, .hover\:bg-blue-gray-800:hover { background-color: #37474f; }
+.bg-blue-gray-900, .hover\:bg-blue-gray-900:hover { background-color: #263238; }
+
+.text-blue-gray-50, .hover\:text-blue-gray-50:hover { color: #eceff1; }
+.text-blue-gray-100, .hover\:text-blue-gray-100:hover { color: #cfd8dc; }
+.text-blue-gray-200, .hover\:text-blue-gray-200:hover { color: #b0bec5; }
+.text-blue-gray-300, .hover\:text-blue-gray-300:hover { color: #90a4ae; }
+.text-blue-gray-400, .hover\:text-blue-gray-400:hover { color: #78909c; }
+.text-blue-gray-500, .hover\:text-blue-gray-500:hover { color: #607d8b; }
+.text-blue-gray-600, .hover\:text-blue-gray-600:hover { color: #546e7a; }
+.text-blue-gray-700, .hover\:text-blue-gray-700:hover { color: #455a64; }
+.text-blue-gray-800, .hover\:text-blue-gray-800:hover { color: #37474f; }
+.text-blue-gray-900, .hover\:text-blue-gray-900:hover { color: #263238; }
+
+.bg-teal-400, .hover\:bg-teal-400:hover { background-color: #26a69a; }
+.bg-teal-500, .hover\:bg-teal-500:hover { background-color: #009688; }
+
+.nowrap {
+  white-space: nowrap;
+}

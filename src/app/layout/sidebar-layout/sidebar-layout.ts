@@ -42,19 +42,63 @@ const SESSION_HEARTBEAT_MS = 10_000;
         </div>
 
         <nav class="flex-1 space-y-1 overflow-y-auto px-3 py-2">
-          @for (item of navItems(); track item.route) {
-            <a
-              [routerLink]="item.route"
-              routerLinkActive="bg-indigo-50 text-indigo-700"
-              [routerLinkActiveOptions]="{ exact: false }"
-              class="flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium text-slate-600 hover:bg-slate-50 hover:text-slate-900"
-              (click)="sidebarOpen.set(false)"
-            >
-              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" class="h-5 w-5 shrink-0">
-                <path stroke-linecap="round" stroke-linejoin="round" [attr.d]="item.iconPath" />
-              </svg>
-              {{ item.label }}
-            </a>
+          @for (item of navItems(); track item.label) {
+            @if (item.children) {
+              <div>
+                <button
+                  type="button"
+                  (click)="toggleGroup(item.label)"
+                  class="flex w-full items-center gap-3 rounded-md px-3 py-2 text-sm font-medium text-slate-600 hover:bg-slate-50 hover:text-slate-900"
+                >
+                  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" class="h-5 w-5 shrink-0">
+                    <path stroke-linecap="round" stroke-linejoin="round" [attr.d]="item.iconPath" />
+                  </svg>
+                  <span class="flex-1 text-left">{{ item.label }}</span>
+                  <svg
+                    xmlns="http://www.w3.org/2000/svg"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    stroke-width="1.75"
+                    class="h-4 w-4 shrink-0 transition-transform"
+                    [class.rotate-90]="isGroupExpanded(item.label)"
+                  >
+                    <path stroke-linecap="round" stroke-linejoin="round" d="m8.25 4.5 7.5 7.5-7.5 7.5" />
+                  </svg>
+                </button>
+                @if (isGroupExpanded(item.label)) {
+                  <div class="ml-4 mt-1 space-y-1 border-l border-slate-100 pl-3">
+                    @for (child of item.children; track child.route) {
+                      <a
+                        [routerLink]="child.route"
+                        routerLinkActive="bg-indigo-50 text-indigo-700"
+                        [routerLinkActiveOptions]="{ exact: false }"
+                        class="flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium text-slate-600 hover:bg-slate-50 hover:text-slate-900"
+                        (click)="sidebarOpen.set(false)"
+                      >
+                        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" class="h-4 w-4 shrink-0">
+                          <path stroke-linecap="round" stroke-linejoin="round" [attr.d]="child.iconPath" />
+                        </svg>
+                        {{ child.label }}
+                      </a>
+                    }
+                  </div>
+                }
+              </div>
+            } @else {
+              <a
+                [routerLink]="item.route"
+                routerLinkActive="bg-indigo-50 text-indigo-700"
+                [routerLinkActiveOptions]="{ exact: false }"
+                class="flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium text-slate-600 hover:bg-slate-50 hover:text-slate-900"
+                (click)="sidebarOpen.set(false)"
+              >
+                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" class="h-5 w-5 shrink-0">
+                  <path stroke-linecap="round" stroke-linejoin="round" [attr.d]="item.iconPath" />
+                </svg>
+                {{ item.label }}
+              </a>
+            }
           }
         </nav>
 
@@ -156,6 +200,7 @@ export class SidebarLayout implements OnInit {
   protected readonly sidebarOpen = signal(false);
   protected readonly loggingOut = signal(false);
   protected readonly menuOpen = signal(false);
+  protected readonly expandedGroups = signal<ReadonlySet<string>>(new Set());
 
   protected readonly initials = computed(() => {
     const name = this.authService.currentUser()?.displayName ?? '';
@@ -164,15 +209,31 @@ export class SidebarLayout implements OnInit {
     return (parts[0][0] + (parts[1]?.[0] ?? '')).toUpperCase();
   });
 
-  /** Derived from the caller's own nav items so this shell never has to be told its role's URL prefix directly. */
+  /** Derived from the caller's own nav items so this shell never has to be told its role's URL prefix directly. Skips group headers (e.g. "Complaints", "POS"), which have no route of their own. */
   protected readonly profileRoute = computed(() => {
-    const firstRoute = this.navItems()[0]?.route ?? '/app';
+    const firstRoute = this.navItems().find((item) => item.route)?.route ?? '/app';
     return `${firstRoute.split('/').slice(0, 3).join('/')}/profile`;
   });
 
   toggleMenu(event: Event): void {
     event.stopPropagation();
     this.menuOpen.update((open) => !open);
+  }
+
+  toggleGroup(label: string): void {
+    this.expandedGroups.update((groups) => {
+      const next = new Set(groups);
+      if (next.has(label)) {
+        next.delete(label);
+      } else {
+        next.add(label);
+      }
+      return next;
+    });
+  }
+
+  isGroupExpanded(label: string): boolean {
+    return this.expandedGroups().has(label);
   }
 
   @HostListener('document:click', ['$event'])
@@ -183,6 +244,16 @@ export class SidebarLayout implements OnInit {
   }
 
   ngOnInit(): void {
+    // Auto-expand whichever group the current route is actually inside of,
+    // once, at load — after that the user's own clicks are in charge.
+    const currentUrl = this.router.url;
+    const groupsToExpand = this.navItems()
+      .filter((item) => item.children?.some((child) => child.route && currentUrl.startsWith(child.route)))
+      .map((item) => item.label);
+    if (groupsToExpand.length > 0) {
+      this.expandedGroups.set(new Set(groupsToExpand));
+    }
+
     interval(SESSION_HEARTBEAT_MS)
       .pipe(
         switchMap(() => this.authService.checkSessionStillValid()),

@@ -71,6 +71,15 @@ export const routes: Routes = [
       { path: 'profile', loadComponent: () => import('./features/profile/profile').then((m) => m.ProfilePage) },
     ],
   },
+  // Dedicated full-bleed POS Terminal — deliberately OUTSIDE the SidebarLayout
+  // shell (see docs/modules/pos-terminal-ui.md). Placed here, before the
+  // `app/user` block below, so this exact-match route wins over that block's
+  // now-removed `pos/sale` child — same URL, completely different shell.
+  {
+    path: 'app/user/pos/sale',
+    canActivate: [authGuard, roleGuard(ROLE_USER)],
+    loadComponent: () => import('./features/user/pos-terminal/pos-terminal').then((m) => m.PosTerminalPage),
+  },
   {
     path: 'app/user',
     canActivate: [authGuard, roleGuard(ROLE_USER)],
@@ -81,6 +90,15 @@ export const routes: Routes = [
       { path: 'my-complaints', loadComponent: () => import('./features/user/my-complaints/my-complaints').then((m) => m.MyComplaintsPage) },
       { path: 'new-complaint', loadComponent: () => import('./features/user/new-complaint/new-complaint').then((m) => m.NewComplaintPage) },
       { path: 'tickets/:id', loadComponent: () => import('./features/tickets/ticket-detail/ticket-detail').then((m) => m.TicketDetailPage) },
+      // POS — see docs/modules/pos-overview.md. "Sale" is handled by the
+      // dedicated top-level route above (outside this sidebar shell
+      // entirely); "Held Orders" is still a placeholder until pos-held-orders.md.
+      { path: 'pos/held-orders', data: { title: 'Held Orders' }, loadComponent: () => import('./shared/ui/coming-soon/coming-soon').then((m) => m.ComingSoon) },
+      { path: 'pos/products', loadComponent: () => import('./features/user/pos-products/pos-products').then((m) => m.PosProductsPage) },
+      { path: 'pos/categories', loadComponent: () => import('./features/user/pos-categories/pos-categories').then((m) => m.PosCategoriesPage) },
+      { path: 'pos/tables', loadComponent: () => import('./features/user/pos-tables/pos-tables').then((m) => m.PosTablesPage) },
+      { path: 'pos/billing', loadComponent: () => import('./features/user/pos-billing/pos-billing').then((m) => m.PosBillingPage) },
+      { path: 'pos/settings', loadComponent: () => import('./features/user/pos-settings/pos-settings').then((m) => m.PosSettingsPage) },
       { path: 'sessions', loadComponent: () => import('./features/auth/sessions/sessions').then((m) => m.SessionsPage) },
       { path: 'profile', loadComponent: () => import('./features/profile/profile').then((m) => m.ProfilePage) },
     ],
