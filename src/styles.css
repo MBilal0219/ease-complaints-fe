@@ -18,6 +18,63 @@
   }
 }
 
+/* Receipt paper size — see PosSettings.ReceiptPaperSize / docs/modules/pos-kot-and-printing.md.
+   OrderReceiptModal.print() sets data-paper-size on #pos-print-area right before
+   window.print() is called; each named @page rule (Chromium's `page:` property)
+   controls that one physical print job's page box/margins, while the width on
+   .pos-print-area itself constrains the actual receipt content to match.
+   The A4 rule below isn't reachable from the receipt flow today — A4 was
+   dropped as a ReceiptPaperSize option (Thermal80mm/A5 only) — but it's kept
+   in place for the future reporting/export feature ReportingPageSize (A4/A5)
+   is already sitting ready for, same naming/technique. */
+@page thermal80 {
+  size: 80mm auto;
+  margin: 4mm;
+}
+@page a5 {
+  size: A5;
+  margin: 10mm;
+}
+@page a4 {
+  size: A4;
+  margin: 15mm;
+}
+.pos-print-area[data-paper-size='Thermal80mm'] {
+  page: thermal80;
+  /* Responsive up to 120mm, not a hard 80mm — the @page rule above only
+     takes effect when the selected printer's driver actually honors a
+     custom size; picking a wider roll/paper size in the print dialog
+     (98mm, 142mm, …) overrides it, and a fixed 80mm content width then
+     left-aligns with blank space on the right instead of using the real
+     page width. width:100% fills whatever the actual page turns out to
+     be up to 120mm; past that, max-width caps it and margin:auto centers
+     it instead of stretching further, so the blank space becomes even on
+     both sides rather than one-sided. */
+  width: 100%;
+  max-width: 120mm;
+  margin: 0 auto;
+  /* Own padding, not just the @page margin above — a print driver/virtual
+     printer can ignore @page margin entirely (seen at 88mm: content flush
+     against the physical edge), so this content-level padding is the
+     reliable source of breathing room regardless of paper width or
+     whether the driver honors page margins at all. box-sizing keeps it
+     from pushing the element past width/max-width above. */
+  box-sizing: border-box;
+  padding: 3mm 4mm;
+}
+.pos-print-area[data-paper-size='A5'] {
+  page: a5;
+  width: 148mm;
+  box-sizing: border-box;
+  padding: 4mm 6mm;
+}
+.pos-print-area[data-paper-size='A4'] {
+  page: a4;
+  width: 210mm;
+  box-sizing: border-box;
+  padding: 6mm 10mm;
+}
+
 /* ---------------------------------------------------------------------
  * Exact tailwind-pos palette (see tailwind-pos/css/style.css and
  * docs/modules/pos-terminal-ui.md). Tailwind's own built-in cyan is close
@@ -90,6 +147,17 @@
 .text-blue-gray-700, .hover\:text-blue-gray-700:hover { color: #455a64; }
 .text-blue-gray-800, .hover\:text-blue-gray-800:hover { color: #37474f; }
 .text-blue-gray-900, .hover\:text-blue-gray-900:hover { color: #263238; }
+
+/* border-blue-gray-* was missing entirely — Tailwind doesn't recognize
+   "blue-gray" as a real color, so a bare `border` utility paired with
+   `border-blue-gray-N` had no matching color rule and fell back to
+   `border-color: currentColor`, inheriting each input's own (often dark)
+   text color. That's what rendered as a harsh black-looking border,
+   not an actual design choice — this fixes it at the source. */
+.border-blue-gray-50 { border-color: #eceff1; }
+.border-blue-gray-100 { border-color: #cfd8dc; }
+.border-blue-gray-200 { border-color: #b0bec5; }
+.border-blue-gray-300 { border-color: #90a4ae; }
 
 .bg-teal-400, .hover\:bg-teal-400:hover { background-color: #26a69a; }
 .bg-teal-500, .hover\:bg-teal-500:hover { background-color: #009688; }

@@ -22,6 +22,10 @@ export interface SaleItem {
 export interface Sale {
   id: string;
   invoiceNumber: number | null;
+  /** "{branch prefix}-{invoiceNumber, zero-padded}", e.g. "DOW-000004" — the persisted, authoritative receipt identity (Sale.ReceiptNumber). Assigned the moment the sale is first created (Held), not just once punched — see Held Orders — so it's already set on a Held sale too; null only for one that predates that change. Prefer this over invoiceNumber/branch for display. */
+  receiptNumber: string | null;
+  /** The owning restaurant's owner's Branch (set at Admin party-creation time) — null if never set. Kept mostly for reference; receiptNumber already has it baked in. */
+  branch: string | null;
   orderType: SaleOrderType;
   tableId: string | null;
   tableName: string | null;

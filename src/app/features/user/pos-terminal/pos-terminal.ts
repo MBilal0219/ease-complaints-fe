@@ -1,13 +1,13 @@
-import { DatePipe, DecimalPipe, NgTemplateOutlet } from '@angular/common';
+import { DecimalPipe, NgTemplateOutlet } from '@angular/common';
 import { HttpErrorResponse } from '@angular/common/http';
 import { ChangeDetectionStrategy, Component, OnInit, computed, inject, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { ActivatedRoute, Router, RouterLink } from '@angular/router';
-import { EMPTY, Subject, catchError, concatMap, debounceTime, forkJoin, interval } from 'rxjs';
+import { EMPTY, Subject, catchError, concatMap, debounceTime, forkJoin } from 'rxjs';
 import { AuthService } from '../../../core/auth/auth.service';
 import { MenuService } from '../../../core/menu/menu.service';
 import { MenuCategory, MenuItem } from '../../../core/menu/models';
-import { PaymentMethod } from '../../../core/settings/models';
+import { PaymentMethod, ReceiptPaperSize } from '../../../core/settings/models';
 import { SettingsService } from '../../../core/settings/settings.service';
 import { Sale, SaleOrderType, SaveSaleItemRequest, SaveSaleRequest } from '../../../core/sales/models';
 import { SaleService } from '../../../core/sales/sale.service';
@@ -18,52 +18,25 @@ import { categoryColor } from '../../../shared/utils/category-color';
 import { emojiForIconKey } from '../../../shared/utils/menu-icons';
 import { ModifierPickerModal, ModifierPickerResult } from './modifier-picker-modal';
 import { OrderReceiptModal } from './order-receipt-modal';
-import { PosNavDrawer } from './pos-nav-drawer';
 import { ReceiptPanel } from './receipt-panel';
 
 type SortMode = 'name' | 'price-asc' | 'price-desc';
 
-const QUICK_CASH_AMOUNTS = [5, 10, 20, 50];
-const CLOCK_TICK_MS = 30_000;
+const QUICK_CASH_AMOUNTS = [50, 100, 500, 1000, 5000];
 
 @Component({
   selector: 'app-pos-terminal',
-  imports: [FormsModule, DecimalPipe, DatePipe, NgTemplateOutlet, RouterLink, Modal, PosNavDrawer, ModifierPickerModal, ReceiptPanel, OrderReceiptModal],
+  imports: [FormsModule, DecimalPipe, NgTemplateOutlet, RouterLink, Modal, ModifierPickerModal, ReceiptPanel, OrderReceiptModal],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     @if (loading()) {
-      <div class="flex h-dvh items-center justify-center bg-blue-gray-900 text-white">Loading…</div>
+      <div class="flex h-full items-center justify-center bg-blue-gray-900 text-white">Loading…</div>
     } @else {
-      <div class="pos-hide-print flex h-dvh flex-col bg-blue-gray-50 text-blue-gray-800">
-        <!-- Top bar -->
-        <header class="flex h-14 shrink-0 items-center gap-3 bg-cyan-900 px-4 text-white shadow-sm">
-          <button type="button" (click)="navDrawerOpen.set(true)" aria-label="Open menu" class="rounded-md p-1.5 hover:bg-white/10">
-            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" class="h-6 w-6">
-              <path stroke-linecap="round" stroke-linejoin="round" d="M3.75 6.75h16.5M3.75 12h16.5M3.75 17.25h16.5" />
-            </svg>
-          </button>
-          <span class="font-semibold">POS Terminal</span>
-
-          <div class="ml-auto flex items-center gap-4 text-sm text-blue-gray-300">
-            <span class="hidden sm:inline">{{ now() | date: 'shortTime' }} · {{ now() | date: 'mediumDate' }}</span>
-            <div class="relative">
-              <button type="button" (click)="userMenuOpen.set(!userMenuOpen())" class="flex items-center gap-1.5 rounded-md px-2 py-1.5 hover:bg-white/10">
-                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" class="h-5 w-5">
-                  <path stroke-linecap="round" stroke-linejoin="round" d="M17.982 18.725A7.488 7.488 0 0 0 12 15.75a7.488 7.488 0 0 0-5.982 2.975m11.963 0a9 9 0 1 0-11.963 0m11.963 0A8.966 8.966 0 0 1 12 21a8.966 8.966 0 0 1-5.982-2.275M15 9.75a3 3 0 1 1-6 0 3 3 0 0 1 6 0Z" />
-                </svg>
-                {{ currentUserName() }}
-                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="h-3.5 w-3.5"><path stroke-linecap="round" stroke-linejoin="round" d="m19.5 8.25-7.5 7.5-7.5-7.5" /></svg>
-              </button>
-              @if (userMenuOpen()) {
-                <div class="absolute right-0 z-30 mt-1 w-40 overflow-hidden rounded-md bg-white py-1 text-blue-gray-700 shadow-lg">
-                  <a routerLink="/app/user/profile" (click)="userMenuOpen.set(false)" class="block px-3 py-2 text-sm hover:bg-blue-gray-50">Profile</a>
-                  <button type="button" (click)="logout()" class="block w-full px-3 py-2 text-left text-sm text-red-600 hover:bg-red-50">Log out</button>
-                </div>
-              }
-            </div>
-          </div>
-        </header>
-
+      <!-- No more own top bar/nav-drawer here — this screen now renders inside
+           the shared SidebarLayout shell like every other page (see
+           user-shell.ts's fullBleedContent input) instead of a dedicated
+           full-bleed layout with its own chrome. -->
+      <div class="pos-hide-print flex h-full flex-col bg-blue-gray-50 text-blue-gray-800">
         <div class="flex flex-1 overflow-hidden bg-blue-gray-50">
           <!-- Left sidebar: order type + categories. Outer wrapper mirrors tailwind-pos's
                "pl-4 pr-2 py-4" inset padding around the colored rail — a floating rounded-3xl
@@ -201,6 +174,11 @@ const CLOCK_TICK_MS = 30_000;
             <div class="flex items-center justify-between px-4 py-3">
               <h2 class="text-base font-semibold text-blue-gray-900">Current Order</h2>
               <div class="flex items-center gap-1">
+                <a routerLink="/app/user/pos/held-orders" class="rounded-md p-1.5 text-blue-gray-500 hover:bg-blue-gray-100" title="Held orders">
+                  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" class="h-5 w-5">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M3 7.5 5.25 3h13.5L21 7.5m-18 0v10.5A2.25 2.25 0 0 0 5.25 20.25h13.5A2.25 2.25 0 0 0 21 18V7.5m-18 0h18M9 12a3 3 0 1 0 6 0" />
+                  </svg>
+                </a>
                 <button type="button" (click)="openCustomerModal()" [disabled]="!sale()" class="rounded-md p-1.5 text-blue-gray-500 hover:bg-blue-gray-100 disabled:opacity-40" title="Customer info">
                   <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" class="h-5 w-5">
                     <path stroke-linecap="round" stroke-linejoin="round" d="M18 7.5a4.5 4.5 0 1 1-9 0 4.5 4.5 0 0 1 9 0ZM3.751 20.105a8.25 8.25 0 0 1 16.498 0" />
@@ -287,7 +265,7 @@ const CLOCK_TICK_MS = 30_000;
                   }
                 </span>
                 @if (sale()!.invoiceNumber) {
-                  <span class="font-semibold text-cyan-700">#{{ sale()!.invoiceNumber }}</span>
+                  <span class="font-semibold text-cyan-700">#{{ sale()!.receiptNumber ?? sale()!.invoiceNumber }}</span>
                 }
               </div>
 
@@ -332,71 +310,21 @@ const CLOCK_TICK_MS = 30_000;
                 />
               </div>
 
-              <div class="px-4 py-2">
-                <div class="flex items-center gap-2 text-xs">
-                  <label for="discount" class="font-medium text-blue-gray-500">Discount</label>
-                  <input
-                    id="discount"
-                    type="number"
-                    min="0"
-                    step="0.01"
-                    [ngModel]="discountAmount()"
-                    (ngModelChange)="setDiscountAmount($event)"
-                    class="w-24 rounded-md shadow px-2 py-1 text-right focus:shadow-md focus:outline-none"
-                  />
-                </div>
-              </div>
 
               <div class="grid grid-cols-2 gap-2 px-4 pb-2 pt-1">
-                <button type="button" (click)="hold()" class="flex items-center justify-center gap-1.5 rounded-md bg-white shadow py-2.5 text-sm font-medium text-blue-gray-700 hover:shadow-md">
+                <button
+                  type="button"
+                  (click)="hold()"
+                  [disabled]="!canProceed()"
+                  [title]="canProceed() ? '' : 'Add at least one item before holding this order'"
+                  class="flex items-center justify-center gap-1.5 rounded-md bg-white shadow py-2.5 text-sm font-medium text-blue-gray-700 hover:shadow-md disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:shadow"
+                >
                   <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" class="h-4 w-4"><path stroke-linecap="round" stroke-linejoin="round" d="M12 6v6h4.5m4.5 0a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z" /></svg>
                   Hold
                 </button>
                 <button type="button" disabled title="Kitchen tickets aren't built yet — see pos-kot-and-printing.md" class="flex cursor-not-allowed items-center justify-center gap-1.5 rounded-md bg-amber-400 py-2.5 text-sm font-medium text-white opacity-50">
                   <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" class="h-4 w-4"><path stroke-linecap="round" stroke-linejoin="round" d="M6.72 13.829c-.24.03-.48.062-.72.096m.72-.096a42.415 42.415 0 0 1 10.56 0m-10.56 0L6.34 18m10.94-4.171c.24.03.48.062.72.096m-.72-.096L17.66 18m0 0 .229 2.523a1.125 1.125 0 0 1-1.12 1.227H7.231c-.662 0-1.18-.568-1.12-1.227L6.34 18m11.318 0h1.091A2.25 2.25 0 0 0 21 15.75V9.456c0-1.081-.768-2.015-1.837-2.175a48.055 48.055 0 0 0-1.913-.247M6.34 18H5.25A2.25 2.25 0 0 1 3 15.75V9.456c0-1.081.768-2.015 1.837-2.175a48.041 48.041 0 0 1 1.913-.247m10.5 0a48.536 48.536 0 0 0-10.5 0m10.5 0V3.75A1.5 1.5 0 0 0 15.75 2.25h-7.5a1.5 1.5 0 0 0-1.5 1.5v3.99" /></svg>
                   Send Kitchen
-                </button>
-              </div>
-
-              @if (isCashSelected()) {
-                <div class="mx-4 mb-2 rounded-md bg-blue-gray-50 p-2.5">
-                  <div class="flex items-center justify-between gap-2 text-xs font-medium text-blue-gray-600">
-                    <span>Cash received</span>
-                    <input
-                      type="number"
-                      min="0"
-                      step="0.01"
-                      [ngModel]="cashReceived() ?? 0"
-                      (ngModelChange)="setCashReceived($event)"
-                      class="w-24 rounded-md shadow px-2 py-1 text-right focus:shadow-md focus:outline-none"
-                    />
-                  </div>
-                  <div class="mt-1.5 grid grid-cols-4 gap-1.5">
-                    @for (amount of quickCashAmounts; track amount) {
-                      <button type="button" (click)="addQuickCash(amount)" class="rounded-md bg-white py-1 text-xs shadow hover:bg-blue-gray-100">+{{ amount }}</button>
-                    }
-                  </div>
-                  <div class="mt-1.5 flex justify-between rounded-md px-2 py-1.5 text-xs font-semibold" [class]="changeDue() >= 0 ? 'bg-cyan-50 text-cyan-800' : 'bg-pink-100 text-pink-600'">
-                    <span>Change</span><span>{{ currencySymbol() }}{{ changeDue() | number: '1.2-2' }}</span>
-                  </div>
-                </div>
-              }
-
-              <div class="grid gap-2 px-4 pb-2" [style.grid-template-columns]="paymentGridColumns()">
-                @for (method of activePaymentMethods(); track method.id) {
-                  <button
-                    type="button"
-                    (click)="selectPaymentMethod(method.id)"
-                    class="rounded-md py-2 text-xs font-semibold text-white"
-                    [style.background]="paymentMethodColor(method)"
-                    [class.ring-2]="selectedPaymentMethodId() === method.id"
-                    [class.ring-offset-1]="selectedPaymentMethodId() === method.id"
-                  >
-                    {{ method.name }}
-                  </button>
-                }
-                <button type="button" disabled title="Splitting a bill across multiple payment methods isn't built yet" class="cursor-not-allowed rounded-md bg-purple-500 py-2 text-xs font-semibold text-white opacity-50">
-                  Split
                 </button>
               </div>
 
@@ -407,12 +335,12 @@ const CLOCK_TICK_MS = 30_000;
               <div class="px-4 pb-4">
                 <button
                   type="button"
-                  (click)="completeAndPrint()"
-                  [disabled]="punching() || !canPunch()"
+                  (click)="openProceedModal()"
+                  [disabled]="!canProceed()"
                   class="flex w-full items-center justify-center gap-2 rounded-2xl bg-cyan-500 py-3 text-sm font-bold text-white hover:bg-cyan-600 disabled:opacity-50"
                 >
                   <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" class="h-5 w-5"><path stroke-linecap="round" stroke-linejoin="round" d="M6.72 13.829c-.24.03-.48.062-.72.096m.72-.096a42.415 42.415 0 0 1 10.56 0m-10.56 0L6.34 18m10.94-4.171c.24.03.48.062.72.096m-.72-.096L17.66 18m0 0 .229 2.523a1.125 1.125 0 0 1-1.12 1.227H7.231c-.662 0-1.18-.568-1.12-1.227L6.34 18m11.318 0h1.091A2.25 2.25 0 0 0 21 15.75V9.456c0-1.081-.768-2.015-1.837-2.175a48.055 48.055 0 0 0-1.913-.247M6.34 18H5.25A2.25 2.25 0 0 1 3 15.75V9.456c0-1.081.768-2.015 1.837-2.175a48.041 48.041 0 0 1 1.913-.247m10.5 0a48.536 48.536 0 0 0-10.5 0m10.5 0V3.75A1.5 1.5 0 0 0 15.75 2.25h-7.5a1.5 1.5 0 0 0-1.5 1.5v3.99" /></svg>
-                  {{ punching() ? 'Completing…' : 'Complete & Print' }}
+                  Proceed
                 </button>
               </div>
             }
@@ -422,22 +350,191 @@ const CLOCK_TICK_MS = 30_000;
       </div>
     }
 
+    <!-- Proceed / payment — Cash and Cashless are two distinct sub-flows behind one
+         "Proceed" button, not a payment-method grid shown inline the whole time. -->
+    <app-modal [open]="proceedModalOpen()" (close)="closeProceedModal()">
+      @switch (paymentStep()) {
+        @case ('choose') {
+          <h2 class="mb-1 text-base font-semibold text-blue-gray-900">How is this being paid?</h2>
+          <p class="mb-4 text-2xl font-bold text-blue-gray-900">{{ currencySymbol() }}{{ previewTotal() | number: '1.2-2' }}</p>
+
+          <div class="mb-4">
+            <label for="proceed-discount" class="block text-sm font-medium text-blue-gray-600">Discount</label>
+            <input
+              id="proceed-discount"
+              type="number"
+              min="0"
+              step="0.01"
+              [ngModel]="discountAmount()"
+              (ngModelChange)="setDiscountAmount($event)"
+              class="mt-1 w-full rounded-lg border border-blue-gray-100 px-4 py-3 text-lg font-semibold shadow-sm focus:border-cyan-500 focus:shadow-lg focus:outline-none"
+            />
+          </div>
+
+          @if (sale()?.orderType !== 'DineIn') {
+            <!-- Pre-filled with a walk-in placeholder (Walking / 0000) rather than
+                 left blank — Takeaway/Delivery require both server-side and most
+                 walk-in customers don't actually give a name/phone; edit here only
+                 when the customer does. -->
+            <div class="mb-4 grid grid-cols-2 gap-2">
+              <div>
+                <label for="proceed-cust-name" class="block text-xs font-medium text-blue-gray-500">Customer name</label>
+                <input id="proceed-cust-name" type="text" [(ngModel)]="customerName" (ngModelChange)="syncCustomerFields()" class="mt-1 w-full rounded-md px-3 py-2 text-sm border border-blue-gray-100 shadow-sm focus:border-cyan-500 focus:shadow-md focus:outline-none" />
+              </div>
+              <div>
+                <label for="proceed-cust-phone" class="block text-xs font-medium text-blue-gray-500">Phone</label>
+                <input id="proceed-cust-phone" type="tel" [(ngModel)]="customerPhone" (ngModelChange)="syncCustomerFields()" class="mt-1 w-full rounded-md px-3 py-2 text-sm border border-blue-gray-100 shadow-sm focus:border-cyan-500 focus:shadow-md focus:outline-none" />
+              </div>
+              @if (sale()?.orderType === 'Delivery') {
+                <div class="col-span-2">
+                  <label for="proceed-cust-address" class="block text-xs font-medium text-blue-gray-500">Delivery address</label>
+                  <input id="proceed-cust-address" type="text" [(ngModel)]="deliveryAddress" (ngModelChange)="syncCustomerFields()" class="mt-1 w-full rounded-md px-3 py-2 text-sm border border-blue-gray-100 shadow-sm focus:border-cyan-500 focus:shadow-md focus:outline-none" />
+                </div>
+              }
+            </div>
+          }
+
+          <div class="grid grid-cols-2 gap-3">
+            <button type="button" (click)="choosePaymentPath('cash')" class="flex flex-col items-center gap-2 rounded-xl bg-cyan-500 px-4 py-6 text-white shadow hover:shadow-lg">
+              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" class="h-8 w-8">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M2.25 8.25h19.5M2.25 9h19.5m-16.5 5.25h6m-6 2.25h3m-3.75 3h15a2.25 2.25 0 0 0 2.25-2.25V6.75A2.25 2.25 0 0 0 19.5 4.5h-15a2.25 2.25 0 0 0-2.25 2.25v10.5A2.25 2.25 0 0 0 4.5 19.5Z" />
+              </svg>
+              <span class="text-sm font-semibold">Cash Payment</span>
+            </button>
+            <button type="button" (click)="choosePaymentPath('cashless')" class="flex flex-col items-center gap-2 rounded-xl bg-blue-gray-600 px-4 py-6 text-white shadow hover:shadow-lg">
+              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" class="h-8 w-8">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M21 12a2.25 2.25 0 0 0-2.25-2.25H15a3 3 0 1 1-6 0H5.25A2.25 2.25 0 0 0 3 12m18 0v6a2.25 2.25 0 0 1-2.25 2.25H5.25A2.25 2.25 0 0 1 3 18v-6m18 0V9M3 12V9m18 0a2.25 2.25 0 0 0-2.25-2.25H5.25A2.25 2.25 0 0 0 3 9m18 0V6a2.25 2.25 0 0 0-2.25-2.25H5.25A2.25 2.25 0 0 0 3 6v3" />
+              </svg>
+              <span class="text-sm font-semibold">Cashless</span>
+            </button>
+          </div>
+          @if (errorMessage()) {
+            <p class="mt-3 rounded-md bg-red-50 px-3 py-2 text-sm text-red-700">{{ errorMessage() }}</p>
+          }
+        }
+        @case ('cash') {
+          <div class="flex items-center gap-2">
+            <button type="button" (click)="paymentStep.set('choose')" class="rounded-md p-1.5 text-blue-gray-500 hover:bg-blue-gray-100" aria-label="Back">
+              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="h-5 w-5"><path stroke-linecap="round" stroke-linejoin="round" d="M10.5 19.5 3 12m0 0 7.5-7.5M3 12h18" /></svg>
+            </button>
+            <h2 class="text-base font-semibold text-blue-gray-900">Cash Payment</h2>
+          </div>
+
+          <div class="mt-4 rounded-md bg-blue-gray-50 p-3">
+            <div class="flex items-center justify-between gap-2 text-sm font-medium text-blue-gray-600">
+              <span>Total due</span>
+              <span class="text-base font-bold text-blue-gray-900">{{ currencySymbol() }}{{ previewTotal() | number: '1.2-2' }}</span>
+            </div>
+            <div class="mt-3">
+              <label for="cash-received" class="text-sm font-medium text-blue-gray-600">Cash received</label>
+              <input
+                id="cash-received"
+                type="number"
+                min="0"
+                step="0.01"
+                placeholder="0.00"
+                [ngModel]="cashReceived()"
+                (ngModelChange)="setCashReceived($event)"
+                class="mt-1 w-full rounded-lg border border-blue-gray-100 px-4 py-3 text-right text-xl font-semibold shadow-sm focus:border-cyan-500 focus:shadow-md focus:outline-none"
+              />
+            </div>
+            <div class="mt-3 grid grid-cols-5 gap-1.5">
+              @for (amount of quickCashAmounts; track amount) {
+                <button type="button" (click)="addQuickCash(amount)" class="rounded-md bg-white py-2 text-sm font-medium shadow hover:bg-blue-gray-100">+{{ amount }}</button>
+              }
+            </div>
+            <div class="mt-2 flex justify-between rounded-md px-2 py-1.5 text-sm font-semibold" [class]="changeDue() >= 0 ? 'bg-cyan-50 text-cyan-800' : 'bg-pink-100 text-pink-600'">
+              <span>{{ changeDue() >= 0 ? 'Change' : 'Remaining' }}</span>
+              <span>{{ currencySymbol() }}{{ (changeDue() >= 0 ? changeDue() : -changeDue()) | number: '1.2-2' }}</span>
+            </div>
+          </div>
+
+          @if (errorMessage()) {
+            <p class="mt-3 rounded-md bg-red-50 px-3 py-2 text-sm text-red-700">{{ errorMessage() }}</p>
+          }
+
+          <button
+            type="button"
+            (click)="completeAndPrint()"
+            [disabled]="punching() || !canPunch()"
+            class="mt-4 flex w-full items-center justify-center gap-2 rounded-2xl bg-cyan-500 py-3 text-sm font-bold text-white hover:bg-cyan-600 disabled:opacity-50"
+          >
+            {{ punching() ? 'Completing…' : 'Complete' }}
+          </button>
+        }
+        @case ('cashless') {
+          <div class="flex items-center gap-2">
+            <button type="button" (click)="paymentStep.set('choose')" class="rounded-md p-1.5 text-blue-gray-500 hover:bg-blue-gray-100" aria-label="Back">
+              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="h-5 w-5"><path stroke-linecap="round" stroke-linejoin="round" d="M10.5 19.5 3 12m0 0 7.5-7.5M3 12h18" /></svg>
+            </button>
+            <h2 class="text-base font-semibold text-blue-gray-900">Choose payment method</h2>
+          </div>
+
+          <div class="mt-4 grid grid-cols-2 gap-2">
+            @for (method of cashlessPaymentMethods(); track method.id) {
+              <button
+                type="button"
+                (click)="selectCashlessMethodAndComplete(method.id)"
+                [disabled]="punching()"
+                class="rounded-lg py-3 text-sm font-semibold text-white shadow hover:shadow-lg disabled:opacity-50"
+                [style.background]="paymentMethodColor(method)"
+              >
+                {{ method.name }}
+              </button>
+            } @empty {
+              <p class="col-span-2 text-sm text-blue-gray-400">No cashless payment methods yet — add one below.</p>
+            }
+          </div>
+
+          @if (addingMethod()) {
+            <div class="mt-3 space-y-2 rounded-md bg-blue-gray-50 p-3">
+              <input
+                type="text"
+                [(ngModel)]="newMethodName"
+                placeholder="Method name (e.g. JazzCash, Bank Transfer)"
+                class="w-full rounded-md px-3 py-2 text-sm border border-blue-gray-100 shadow-sm focus:border-cyan-500 focus:shadow-md focus:outline-none"
+              />
+              <div class="flex gap-2">
+                <button type="button" (click)="addingMethod.set(false)" class="flex-1 rounded-md bg-white py-2 text-sm font-medium text-blue-gray-700 shadow hover:shadow-md">Cancel</button>
+                <button
+                  type="button"
+                  (click)="saveNewPaymentMethod()"
+                  [disabled]="!newMethodName.trim() || savingMethod()"
+                  class="flex-1 rounded-md bg-cyan-500 py-2 text-sm font-medium text-white hover:bg-cyan-600 disabled:opacity-50"
+                >
+                  {{ savingMethod() ? 'Adding…' : 'Add & Select' }}
+                </button>
+              </div>
+            </div>
+          } @else {
+            <button type="button" (click)="addingMethod.set(true)" class="mt-3 w-full rounded-md bg-white py-2 text-sm font-medium text-blue-gray-500 shadow hover:shadow-md">
+              + Add Payment Method
+            </button>
+          }
+
+          @if (errorMessage()) {
+            <p class="mt-3 rounded-md bg-red-50 px-3 py-2 text-sm text-red-700">{{ errorMessage() }}</p>
+          }
+        }
+      }
+    </app-modal>
+
     <!-- Customer info -->
     <app-modal [open]="customerModalOpen()" (close)="customerModalOpen.set(false)">
       <h2 class="mb-4 text-base font-semibold text-blue-gray-900">Customer Info</h2>
       <div class="space-y-3">
         <div>
           <label for="cust-name" class="block text-sm font-medium text-blue-gray-700">Name</label>
-          <input id="cust-name" type="text" [(ngModel)]="customerName" class="mt-1 w-full rounded-md px-3 py-2 text-sm shadow focus:shadow-md focus:outline-none" />
+          <input id="cust-name" type="text" [(ngModel)]="customerName" class="mt-1 w-full rounded-md px-3 py-2 text-sm border border-blue-gray-100 shadow-sm focus:border-cyan-500 focus:shadow-md focus:outline-none" />
         </div>
         <div>
           <label for="cust-phone" class="block text-sm font-medium text-blue-gray-700">Phone</label>
-          <input id="cust-phone" type="tel" [(ngModel)]="customerPhone" class="mt-1 w-full rounded-md px-3 py-2 text-sm shadow focus:shadow-md focus:outline-none" />
+          <input id="cust-phone" type="tel" [(ngModel)]="customerPhone" class="mt-1 w-full rounded-md px-3 py-2 text-sm border border-blue-gray-100 shadow-sm focus:border-cyan-500 focus:shadow-md focus:outline-none" />
         </div>
         @if (sale()?.orderType === 'Delivery') {
           <div>
             <label for="cust-address" class="block text-sm font-medium text-blue-gray-700">Delivery address</label>
-            <input id="cust-address" type="text" [(ngModel)]="deliveryAddress" class="mt-1 w-full rounded-md px-3 py-2 text-sm shadow focus:shadow-md focus:outline-none" />
+            <input id="cust-address" type="text" [(ngModel)]="deliveryAddress" class="mt-1 w-full rounded-md px-3 py-2 text-sm border border-blue-gray-100 shadow-sm focus:border-cyan-500 focus:shadow-md focus:outline-none" />
           </div>
         }
       </div>
@@ -446,8 +543,6 @@ const CLOCK_TICK_MS = 30_000;
         <button type="button" (click)="saveCustomerInfo()" class="rounded-md bg-cyan-500 px-4 py-2 text-sm font-medium text-white hover:bg-cyan-600">Save</button>
       </div>
     </app-modal>
-
-    <app-pos-nav-drawer [open]="navDrawerOpen()" (closed)="navDrawerOpen.set(false)" />
 
     <app-modifier-picker-modal
       [open]="!!modifierPickerItem()"
@@ -463,10 +558,10 @@ const CLOCK_TICK_MS = 30_000;
       [receiptFooterText]="receiptFooterText()"
       [currencySymbol]="currencySymbol()"
       [cashReceived]="wasCashSelectedAtPunch() ? cashReceived() : null"
+      [paperSize]="receiptPaperSize()"
+      [logoUrl]="logoUrl()"
       (closed)="onReceiptClosed()"
     />
-
-    <div id="pos-print-area" class="pos-print-area"></div>
   `,
 })
 export class PosTerminalPage implements OnInit {
@@ -481,12 +576,9 @@ export class PosTerminalPage implements OnInit {
   private readonly router = inject(Router);
 
   protected readonly loading = signal(true);
-  protected readonly navDrawerOpen = signal(false);
-  protected readonly userMenuOpen = signal(false);
   protected readonly orderMenuOpen = signal(false);
   protected readonly errorMessage = signal<string | null>(null);
   protected readonly punching = signal(false);
-  protected readonly now = signal(new Date());
 
   protected readonly categories = signal<MenuCategory[]>([]);
   protected readonly menuItems = signal<MenuItem[]>([]);
@@ -512,6 +604,8 @@ export class PosTerminalPage implements OnInit {
   protected readonly activePaymentMethods = computed(() => this.paymentMethods().filter((m) => m.isActive));
   protected readonly currencySymbol = signal('$');
   protected readonly receiptFooterText = signal<string | null>(null);
+  protected readonly receiptPaperSize = signal<ReceiptPaperSize>('Thermal80mm');
+  protected readonly logoUrl = signal<string | null>(null);
 
   protected readonly selectedCategoryId = signal<string | null>(null);
   protected readonly searchTerm = signal('');
@@ -545,9 +639,18 @@ export class PosTerminalPage implements OnInit {
   protected readonly isCashSelected = computed(() => (this.selectedPaymentMethod()?.name ?? '').toLowerCase().includes('cash'));
   protected readonly cashReceived = signal<number | null>(null);
 
+  /** The "Proceed" popup — see docs/modules/pos-terminal-ui.md "Fourteenth pass". Payment-method selection lives entirely inside this modal now, not as an always-visible button grid in the main panel. */
+  protected readonly proceedModalOpen = signal(false);
+  protected readonly paymentStep = signal<'choose' | 'cash' | 'cashless'>('choose');
+  protected readonly cashlessPaymentMethods = computed(() => this.activePaymentMethods().filter((m) => !m.name.toLowerCase().includes('cash')));
+  protected readonly addingMethod = signal(false);
+  protected readonly savingMethod = signal(false);
+  protected newMethodName = '';
+
   protected readonly discountAmount = signal(0);
-  protected customerName = '';
-  protected customerPhone = '';
+  /** Defaults to a walk-in placeholder rather than empty — Takeaway/Delivery require both server-side (SaleService.ValidateRequiredFieldsForOrderType), and most walk-in customers don't actually give a name/phone; staff overrides these in the Proceed modal only when the customer does. */
+  protected customerName = 'Walking';
+  protected customerPhone = '0000';
   protected deliveryAddress = '';
 
   protected readonly showReceiptModal = signal(false);
@@ -577,12 +680,16 @@ export class PosTerminalPage implements OnInit {
     return true;
   });
 
+  /** Gates the main panel's "Proceed" button — just "is there anything to pay for", since payment-method choice now happens inside the Proceed modal, not before it. */
+  protected readonly canProceed = computed(() => {
+    const sale = this.sale();
+    return !!sale && sale.items.length > 0;
+  });
+
   private readonly fieldChange$ = new Subject<void>();
   private readonly mutations$ = new Subject<(current: Sale) => SaveSaleRequest>();
 
   ngOnInit(): void {
-    interval(CLOCK_TICK_MS).subscribe(() => this.now.set(new Date()));
-
     this.fieldChange$.pipe(debounceTime(500)).subscribe(() => this.enqueueFieldsOnlyChange());
 
     this.mutations$
@@ -624,6 +731,8 @@ export class PosTerminalPage implements OnInit {
       this.paymentMethods.set(paymentMethods);
       this.currencySymbol.set(settings.currencySymbol);
       this.receiptFooterText.set(settings.receiptFooterText);
+      this.receiptPaperSize.set(settings.receiptPaperSize);
+      this.logoUrl.set(settings.logoUrl);
       this.loading.set(false);
 
       const resumeSaleId = this.route.snapshot.queryParamMap.get('saleId');
@@ -635,20 +744,12 @@ export class PosTerminalPage implements OnInit {
     this.saleService.getById(saleId).subscribe({
       next: (sale) => {
         this.sale.set(sale);
-        this.customerName = sale.customerName ?? '';
-        this.customerPhone = sale.customerPhone ?? '';
+        this.customerName = sale.customerName ?? 'Walking';
+        this.customerPhone = sale.customerPhone ?? '0000';
         this.deliveryAddress = sale.deliveryAddress ?? '';
         this.discountAmount.set(sale.discountAmount);
       },
       error: () => this.errorMessage.set('Could not load that order — starting a new one.'),
-    });
-  }
-
-  logout(): void {
-    this.userMenuOpen.set(false);
-    this.authService.logout().subscribe({
-      next: () => this.router.navigateByUrl('/login'),
-      error: () => this.router.navigateByUrl('/login'),
     });
   }
 
@@ -844,6 +945,11 @@ export class PosTerminalPage implements OnInit {
     this.enqueueFieldsOnlyChange();
   }
 
+  /** Debounced sync for the Name/Phone/Address fields shown inline in the Proceed modal (Takeaway/Delivery) — same fieldChange$ pipe setDiscountAmount already uses, so a quick edit right before paying doesn't fire a PUT per keystroke. */
+  syncCustomerFields(): void {
+    this.fieldChange$.next();
+  }
+
   private enqueueFieldsOnlyChange(): void {
     this.mutations$.next((current) => this.buildRequest(current, this.mapSaleItemsToRequests(current)));
   }
@@ -883,6 +989,71 @@ export class PosTerminalPage implements OnInit {
     this.selectedPaymentMethodId.set(id);
   }
 
+  openProceedModal(): void {
+    if (!this.canProceed()) return;
+    this.errorMessage.set(null);
+    this.paymentStep.set('choose');
+    this.addingMethod.set(false);
+    this.newMethodName = '';
+    this.proceedModalOpen.set(true);
+  }
+
+  closeProceedModal(): void {
+    this.proceedModalOpen.set(false);
+    this.paymentStep.set('choose');
+    this.addingMethod.set(false);
+  }
+
+  /** First step of Proceed: Cash pre-selects the restaurant's Cash payment method and pre-fills the received amount with the exact total (staff adjusts if the customer hands over more); Cashless clears any prior selection and shows the method list instead. */
+  choosePaymentPath(path: 'cash' | 'cashless'): void {
+    this.errorMessage.set(null);
+
+    if (path === 'cash') {
+      const cashMethod = this.activePaymentMethods().find((m) => m.name.toLowerCase().includes('cash'));
+      if (!cashMethod) {
+        this.errorMessage.set('No active Cash payment method is set up — add one under POS ▸ Settings, or use Cashless.');
+        return;
+      }
+      this.selectedPaymentMethodId.set(cashMethod.id);
+      // Left empty rather than pre-filled with the total — staff enters the
+      // actual amount handed over, not just confirms a guessed default.
+      this.cashReceived.set(null);
+      this.paymentStep.set('cash');
+      return;
+    }
+
+    this.selectedPaymentMethodId.set(null);
+    this.paymentStep.set('cashless');
+  }
+
+  /** Picking a cashless method completes the sale immediately — there's no separate "Complete" step for it the way Cash has one (nothing left to enter). */
+  selectCashlessMethodAndComplete(methodId: string): void {
+    this.selectedPaymentMethodId.set(methodId);
+    this.completeAndPrint();
+  }
+
+  saveNewPaymentMethod(): void {
+    const name = this.newMethodName.trim();
+    if (!name || this.savingMethod()) return;
+
+    this.savingMethod.set(true);
+    this.errorMessage.set(null);
+
+    this.settingsService.createPaymentMethod({ name, taxRatePercent: 0, sortOrder: this.paymentMethods().length }).subscribe({
+      next: (method) => {
+        this.savingMethod.set(false);
+        this.paymentMethods.update((all) => [...all, method]);
+        this.addingMethod.set(false);
+        this.newMethodName = '';
+        this.selectCashlessMethodAndComplete(method.id);
+      },
+      error: (error: HttpErrorResponse) => {
+        this.savingMethod.set(false);
+        this.errorMessage.set(error.error?.error ?? 'Could not add this payment method.');
+      },
+    });
+  }
+
   protected paymentMethodColor(method: PaymentMethod): string {
     const name = method.name.toLowerCase();
     if (name.includes('cash')) return '#16a34a';
@@ -890,12 +1061,13 @@ export class PosTerminalPage implements OnInit {
     return categoryColor(method.id);
   }
 
-  protected paymentGridColumns(): string {
-    return `repeat(${this.activePaymentMethods().length + 1}, minmax(0, 1fr))`;
-  }
 
-  setCashReceived(value: number): void {
-    this.cashReceived.set(value || 0);
+  setCashReceived(value: number | null): void {
+    // No `|| 0` coercion — a genuinely empty field stays null (shows blank,
+    // matching placeholder "0.00") rather than snapping to a literal 0 the
+    // moment it's cleared mid-edit. Every other read of cashReceived() already
+    // falls back to ?? 0 for its own calculations.
+    this.cashReceived.set(value);
   }
 
   addQuickCash(amount: number): void {
@@ -918,6 +1090,7 @@ export class PosTerminalPage implements OnInit {
     this.saleService.punch(sale.id, methodId).subscribe({
       next: (punched) => {
         this.punching.set(false);
+        this.proceedModalOpen.set(false);
         this.punchedSale.set(punched);
         this.showReceiptModal.set(true);
       },
@@ -943,12 +1116,16 @@ export class PosTerminalPage implements OnInit {
     this.cashReceived.set(null);
     this.wasCashSelectedAtPunch.set(false);
     this.discountAmount.set(0);
-    this.customerName = '';
-    this.customerPhone = '';
+    this.customerName = 'Walking';
+    this.customerPhone = '0000';
     this.deliveryAddress = '';
     this.errorMessage.set(null);
     this.orderMenuOpen.set(false);
     this.tableSwitcherOpen.set(false);
+    this.proceedModalOpen.set(false);
+    this.paymentStep.set('choose');
+    this.addingMethod.set(false);
+    this.newMethodName = '';
     this.refreshTables();
     this.router.navigate([], { relativeTo: this.route, queryParams: {} });
   }

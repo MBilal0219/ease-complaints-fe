@@ -1,6 +1,6 @@
 import { DecimalPipe } from '@angular/common';
 import { ChangeDetectionStrategy, Component, computed, effect, input, output, signal } from '@angular/core';
-import { MenuItem } from '../../../core/menu/models';
+import { MenuItem, ModifierOption } from '../../../core/menu/models';
 import { Modal } from '../../../shared/ui/modal/modal';
 
 export interface ModifierPickerResult {
@@ -43,8 +43,8 @@ export interface ModifierPickerResult {
                         <input type="radio" [name]="group.id" [checked]="selectedSingle(group.id) === option.id" (change)="selectSingle(group.id, option.id)" />
                         {{ option.name }}
                       </span>
-                      @if (option.priceDelta) {
-                        <span class="text-slate-500">+{{ option.priceDelta | number: '1.2-2' }}</span>
+                      @if (optionPriceLabel(option); as label) {
+                        <span class="text-slate-500">{{ label }}</span>
                       }
                     </label>
                   }
@@ -55,8 +55,8 @@ export interface ModifierPickerResult {
                         <input type="checkbox" [checked]="isMultiSelected(option.id)" (change)="toggleMulti(option.id)" />
                         {{ option.name }}
                       </span>
-                      @if (option.priceDelta) {
-                        <span class="text-slate-500">+{{ option.priceDelta | number: '1.2-2' }}</span>
+                      @if (optionPriceLabel(option); as label) {
+                        <span class="text-slate-500">{{ label }}</span>
                       }
                     </label>
                   }
@@ -93,6 +93,14 @@ export class ModifierPickerModal {
   private readonly singleSelections = signal<Record<string, string>>({});
   /** Selected option ids across every Multiple group. */
   private readonly multiSelections = signal<Set<string>>(new Set());
+
+  /** "= 500.00" for a total-price option (shows the actual variant price, not the sometimes-confusing derived delta), "+3.00" for a plain extra-amount one, or null for a free option (nothing to show). */
+  protected optionPriceLabel(option: ModifierOption): string | null {
+    if (option.priceIsTotalAmount) {
+      return option.totalPriceAmount !== null ? `= ${option.totalPriceAmount.toFixed(2)}` : null;
+    }
+    return option.priceDelta ? `+${option.priceDelta.toFixed(2)}` : null;
+  }
 
   protected readonly allRequiredSatisfied = computed(() => {
     const item = this.item();

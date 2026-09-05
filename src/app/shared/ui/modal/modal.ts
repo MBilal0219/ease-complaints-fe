@@ -1,16 +1,24 @@
-import { ChangeDetectionStrategy, Component, input, output } from '@angular/core';
+import { ApplicationRef, ChangeDetectionStrategy, Component, inject, input, output } from '@angular/core';
 
+/**
+ * The outer wrapper carries `pos-hide-print` (see eas-complaints/src/styles.css)
+ * so this modal itself never bleeds into a print job — it matters concretely
+ * for the POS Terminal's receipt modal, which is the one modal actually open
+ * at print time: without this, the modal's backdrop/close button/action
+ * buttons print alongside the dedicated `#pos-print-area` content instead of
+ * being hidden like the rest of the app chrome.
+ */
 @Component({
   selector: 'app-modal',
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     @if (open()) {
-      <div class="fixed inset-0 z-50 flex items-center justify-center p-4">
-        <div class="fixed inset-0 bg-slate-900/50 backdrop-blur-[1px]" (click)="close.emit()"></div>
-        <div class="relative w-full max-w-lg rounded-xl bg-white p-6 shadow-xl" role="dialog" aria-modal="true">
+      <div class="pos-hide-print fixed inset-0 z-50 flex items-center justify-center p-4">
+        <div class="fixed inset-0 bg-slate-900/50 backdrop-blur-[1px]" (click)="emitClose()"></div>
+        <div class="relative w-full {{ maxWidthClass() }} rounded-xl bg-white p-6 shadow-xl" role="dialog" aria-modal="true">
           <button
             type="button"
-            (click)="close.emit()"
+            (click)="emitClose()"
             aria-label="Close"
             class="absolute right-4 top-4 rounded-md p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-600"
           >
@@ -25,6 +33,36 @@ import { ChangeDetectionStrategy, Component, input, output } from '@angular/core
   `,
 })
 export class Modal {
+  private readonly appRef = inject(ApplicationRef);
+
   readonly open = input.required<boolean>();
+  /** Tailwind max-width utility class (e.g. "max-w-xs") — defaults to the dialog's usual size; a caller like the receipt modal overrides it to look right for its own content instead of always being one fixed dialog width. */
+  readonly maxWidthClass = input<string>('max-w-lg');
   readonly close = output<void>();
+
+  /**
+   * Closing via the X or the backdrop routes through here (not a plain
+   * `close.emit()`) as a safety net: this app has no zone.js at all
+   * (Angular 22, zoneless by default), so change detection after a click
+   * relies entirely on Angular's own zoneless scheduler noticing the signal
+   * writes triggered by `close.emit()`. That should always be automatic —
+   * this is deliberately deferred (queueMicrotask) and guarded (try/catch)
+   * rather than an immediate `appRef.tick()`, because calling `tick()`
+   * synchronously while Angular's own scheduler may already have a render
+   * in flight for this same click can throw ("ApplicationRef.tick called
+   * recursively") instead of helping. The real fix for the modal-not-
+   * closing bug this was chasing turned out to be at the actual root cause —
+   * see OrderReceiptModal.print()'s doc comment — this stays only as cheap,
+   * harmless insurance.
+   */
+  protected emitClose(): void {
+    this.close.emit();
+    queueMicrotask(() => {
+      try {
+        this.appRef.tick();
+      } catch {
+        // Already flushed by Angular's own scheduler — nothing to do.
+      }
+    });
+  }
 }

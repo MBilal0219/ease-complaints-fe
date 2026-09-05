@@ -12,7 +12,7 @@ import { Modal } from '../../../shared/ui/modal/modal';
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     <app-modal [open]="open()" (close)="dismiss()">
-      <h2 class="text-base font-semibold text-slate-900">Void & Reissue Invoice {{ sale()?.invoiceNumber }}</h2>
+      <h2 class="text-base font-semibold text-slate-900">Void & Reissue Invoice {{ sale()?.receiptNumber ?? sale()?.invoiceNumber }}</h2>
       <p class="mt-2 text-sm text-slate-600">
         This voids the punched bill and opens a new Held order with the same items, ready to correct and re-punch. The original
         stays on record, marked Voided, for a full audit trail.

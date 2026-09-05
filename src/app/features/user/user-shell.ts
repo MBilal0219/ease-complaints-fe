@@ -1,8 +1,13 @@
-import { ChangeDetectionStrategy, Component } from '@angular/core';
+import { ChangeDetectionStrategy, Component, DestroyRef, inject, signal } from '@angular/core';
+import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
+import { NavigationEnd, Router } from '@angular/router';
+import { filter } from 'rxjs';
 import { SidebarLayout } from '../../layout/sidebar-layout/sidebar-layout';
 import { NavItem } from '../../layout/sidebar-layout/nav-item';
 
-/** Exported so the POS Terminal's own nav-drawer overlay (outside the normal SidebarLayout — see pos-terminal-ui.md) can reuse the same set of links. */
+/** The dedicated, full-bleed POS Terminal route — see docs/modules/pos-terminal-ui.md "Thirty-first pass". It's the one child route under this shell that needs SidebarLayout's `fullBleedContent` (it manages its own internal scrolling regions) instead of the default padded/scrollable content area. */
+const POS_TERMINAL_ROUTE = '/app/user/pos/sale';
+
 export const USER_NAV_ITEMS: NavItem[] = [
   {
     label: 'Dashboard',
@@ -68,13 +73,28 @@ export const USER_NAV_ITEMS: NavItem[] = [
   },
 ];
 
-/** Same shell/sidebar as Admin and Developer — only the nav items differ per role. */
+/** Same shell/sidebar as Admin and Developer, plus two things only User needs: the POS section's items surfaced directly in the header (not just nested in the sidebar's collapsible "POS" group), and full-bleed content specifically for the Terminal route. */
 @Component({
   selector: 'app-user-shell',
   imports: [SidebarLayout],
   changeDetection: ChangeDetectionStrategy.OnPush,
-  template: `<app-sidebar-layout [navItems]="navItems" />`,
+  template: `<app-sidebar-layout [navItems]="navItems" [headerNavItems]="posHeaderItems" [fullBleedContent]="isTerminalRoute()" />`,
 })
 export class UserShell {
   protected readonly navItems = USER_NAV_ITEMS;
+  protected readonly posHeaderItems = USER_NAV_ITEMS.find((item) => item.label === 'POS')?.children ?? [];
+
+  private readonly router = inject(Router);
+  private readonly destroyRef = inject(DestroyRef);
+
+  protected readonly isTerminalRoute = signal(this.router.url.startsWith(POS_TERMINAL_ROUTE));
+
+  constructor() {
+    this.router.events
+      .pipe(
+        filter((event): event is NavigationEnd => event instanceof NavigationEnd),
+        takeUntilDestroyed(this.destroyRef),
+      )
+      .subscribe((event) => this.isTerminalRoute.set(event.urlAfterRedirects.startsWith(POS_TERMINAL_ROUTE)));
+  }
 }

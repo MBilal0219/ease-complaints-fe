@@ -8,7 +8,12 @@ import { Modal } from '../../../shared/ui/modal/modal';
 import { Toggle } from '../../../shared/ui/toggle/toggle';
 import { MENU_ICONS } from '../../../shared/utils/menu-icons';
 
-type OptionGroup = FormGroup<{ name: import('@angular/forms').FormControl<string>; priceDelta: import('@angular/forms').FormControl<number> }>;
+type OptionGroup = FormGroup<{
+  name: import('@angular/forms').FormControl<string>;
+  priceDelta: import('@angular/forms').FormControl<number>;
+  priceIsTotalAmount: import('@angular/forms').FormControl<boolean>;
+  totalPriceAmount: import('@angular/forms').FormControl<number | null>;
+}>;
 type ModifierFormGroup = FormGroup<{
   name: import('@angular/forms').FormControl<string>;
   selectionType: import('@angular/forms').FormControl<'Single' | 'Multiple'>;
@@ -117,12 +122,57 @@ type ModifierFormGroup = FormGroup<{
                 <button type="button" (click)="removeGroup(groupIndex)" class="ml-auto text-xs font-medium text-red-600 hover:text-red-500">Remove group</button>
               </div>
 
-              <div formArrayName="options" class="mt-2 space-y-1.5">
+              <div formArrayName="options" class="mt-2 space-y-2">
                 @for (option of optionsOf(group).controls; track option; let optionIndex = $index) {
-                  <div class="flex items-center gap-2" [formGroup]="option">
-                    <input type="text" placeholder="Option (e.g. Large)" formControlName="name" class="min-w-0 flex-1 rounded-md border border-slate-300 px-2.5 py-1.5 text-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500" />
-                    <input type="number" step="0.01" placeholder="+price" formControlName="priceDelta" class="w-24 rounded-md border border-slate-300 px-2.5 py-1.5 text-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500" />
-                    <button type="button" (click)="removeOption(groupIndex, optionIndex)" class="text-xs font-medium text-red-600 hover:text-red-500">Remove</button>
+                  <div class="rounded-md border border-slate-200 bg-white p-2" [formGroup]="option">
+                    <div class="flex items-center gap-2">
+                      <input type="text" placeholder="Option (e.g. Large)" formControlName="name" class="min-w-0 flex-1 rounded-md border border-slate-300 px-2.5 py-1.5 text-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500" />
+                      <button type="button" (click)="removeOption(groupIndex, optionIndex)" class="shrink-0 text-xs font-medium text-red-600 hover:text-red-500">Remove</button>
+                    </div>
+
+                    <!-- Either an extra amount added to the item's base price, or the
+                         variant's full total price (the extra amount is then derived
+                         automatically from the item's price) — see docs/modules/pos-menu.md. -->
+                    <div class="mt-1.5 flex flex-wrap items-center gap-1.5">
+                      <div class="flex overflow-hidden rounded-md border border-slate-300 text-xs">
+                        <button
+                          type="button"
+                          (click)="setOptionPriceMode(option, false)"
+                          class="px-2 py-1"
+                          [class]="!option.controls.priceIsTotalAmount.value ? 'bg-indigo-600 text-white' : 'bg-white text-slate-600 hover:bg-slate-50'"
+                        >
+                          + Extra amount
+                        </button>
+                        <button
+                          type="button"
+                          (click)="setOptionPriceMode(option, true)"
+                          class="border-l border-slate-300 px-2 py-1"
+                          [class]="option.controls.priceIsTotalAmount.value ? 'bg-indigo-600 text-white' : 'bg-white text-slate-600 hover:bg-slate-50'"
+                        >
+                          = Total price
+                        </button>
+                      </div>
+
+                      @if (option.controls.priceIsTotalAmount.value) {
+                        <input
+                          type="number"
+                          step="0.01"
+                          min="0"
+                          placeholder="Total price"
+                          formControlName="totalPriceAmount"
+                          class="w-24 rounded-md border border-slate-300 px-2.5 py-1.5 text-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                        />
+                        <span class="text-xs text-slate-400">({{ effectiveDeltaLabel(option) }} vs. base price)</span>
+                      } @else {
+                        <input
+                          type="number"
+                          step="0.01"
+                          placeholder="+price"
+                          formControlName="priceDelta"
+                          class="w-24 rounded-md border border-slate-300 px-2.5 py-1.5 text-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                        />
+                      }
+                    </div>
                   </div>
                 }
               </div>
@@ -200,7 +250,7 @@ export class ItemFormModal {
         for (const group of existing?.modifierGroups ?? []) {
           const groupForm = this.buildGroup(group.name, group.selectionType, group.isRequired);
           for (const option of group.options) {
-            groupForm.controls.options.push(this.buildOption(option.name, option.priceDelta));
+            groupForm.controls.options.push(this.buildOption(option.name, option.priceDelta, option.priceIsTotalAmount, option.totalPriceAmount));
           }
           this.modifierGroups.push(groupForm);
         }
@@ -218,7 +268,7 @@ export class ItemFormModal {
 
   addGroup(): void {
     const group = this.buildGroup('', 'Single', false);
-    group.controls.options.push(this.buildOption('', 0));
+    group.controls.options.push(this.buildOption('', 0, false, null));
     this.modifierGroups.push(group);
   }
 
@@ -227,11 +277,26 @@ export class ItemFormModal {
   }
 
   addOption(groupIndex: number): void {
-    this.modifierGroups.at(groupIndex).controls.options.push(this.buildOption('', 0));
+    this.modifierGroups.at(groupIndex).controls.options.push(this.buildOption('', 0, false, null));
   }
 
   removeOption(groupIndex: number, optionIndex: number): void {
     this.modifierGroups.at(groupIndex).controls.options.removeAt(optionIndex);
+  }
+
+  protected setOptionPriceMode(option: OptionGroup, isTotal: boolean): void {
+    option.controls.priceIsTotalAmount.setValue(isTotal);
+    if (isTotal && option.controls.totalPriceAmount.value === null) {
+      option.controls.totalPriceAmount.setValue(this.form.controls.price.value);
+    }
+  }
+
+  /** Live preview of the actual extra amount a total-price option works out to, given the item's current base price — e.g. "+2.00" or "-1.50" (a total below the base price is allowed, same as any other discount-like modifier). */
+  protected effectiveDeltaLabel(option: OptionGroup): string {
+    const total = option.controls.totalPriceAmount.value ?? 0;
+    const basePrice = this.form.controls.price.value ?? 0;
+    const delta = total - basePrice;
+    return `${delta >= 0 ? '+' : '-'}${Math.abs(delta).toFixed(2)}`;
   }
 
   onFileSelected(event: Event): void {
@@ -266,7 +331,13 @@ export class ItemFormModal {
         isRequired: group.controls.isRequired.value,
         sortOrder: groupIndex,
         options: group.controls.options.controls
-          .map((option, optionIndex) => ({ name: option.controls.name.value, priceDelta: option.controls.priceDelta.value, sortOrder: optionIndex }))
+          .map((option, optionIndex) => ({
+            name: option.controls.name.value,
+            priceDelta: option.controls.priceDelta.value,
+            priceIsTotalAmount: option.controls.priceIsTotalAmount.value,
+            totalPriceAmount: option.controls.totalPriceAmount.value,
+            sortOrder: optionIndex,
+          }))
           .filter((o) => o.name.trim().length > 0),
       }))
       .filter((g) => g.name.trim().length > 0 && g.options.length > 0);
@@ -305,10 +376,12 @@ export class ItemFormModal {
     });
   }
 
-  private buildOption(name: string, priceDelta: number): OptionGroup {
+  private buildOption(name: string, priceDelta: number, priceIsTotalAmount: boolean, totalPriceAmount: number | null): OptionGroup {
     return this.fb.nonNullable.group({
       name: [name, [Validators.required]],
       priceDelta: [priceDelta],
+      priceIsTotalAmount: [priceIsTotalAmount],
+      totalPriceAmount: this.fb.control<number | null>(totalPriceAmount),
     });
   }
 }

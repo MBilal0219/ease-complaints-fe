@@ -3,9 +3,12 @@ import { ChangeDetectionStrategy, Component, DestroyRef, OnInit, inject, signal 
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { FormsModule } from '@angular/forms';
 import { Subject, catchError, merge, of, switchMap } from 'rxjs';
+import { AuthService } from '../../../core/auth/auth.service';
 import { SaleService } from '../../../core/sales/sale.service';
-import { PagedResult, Sale, SaleItem, SaleOrderType, SaleSearchFilter, SaleStatus } from '../../../core/sales/models';
-import { Modal } from '../../../shared/ui/modal/modal';
+import { PagedResult, Sale, SaleOrderType, SaleSearchFilter, SaleStatus } from '../../../core/sales/models';
+import { PosSettings, ReceiptPaperSize } from '../../../core/settings/models';
+import { SettingsService } from '../../../core/settings/settings.service';
+import { OrderReceiptModal } from '../pos-terminal/order-receipt-modal';
 import { Pagination } from '../../../shared/ui/pagination/pagination';
 import { VoidReissueModal } from '../void-reissue-modal/void-reissue-modal';
 
@@ -13,7 +16,7 @@ const PAGE_SIZE = 20;
 
 @Component({
   selector: 'app-pos-billing',
-  imports: [FormsModule, DatePipe, DecimalPipe, Modal, Pagination, VoidReissueModal],
+  imports: [FormsModule, DatePipe, DecimalPipe, OrderReceiptModal, Pagination, VoidReissueModal],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     <h1 class="text-lg font-semibold text-slate-900">Billing</h1>
@@ -78,7 +81,7 @@ const PAGE_SIZE = 20;
             <tbody class="divide-y divide-slate-100">
               @for (sale of result().items; track sale.id) {
                 <tr class="cursor-pointer hover:bg-slate-50" (click)="openDetail(sale)">
-                  <td class="px-4 py-2.5 font-medium text-slate-900">{{ sale.invoiceNumber ?? '—' }}</td>
+                  <td class="px-4 py-2.5 font-medium text-slate-900">{{ sale.receiptNumber ?? sale.invoiceNumber ?? '—' }}</td>
                   <td class="px-4 py-2.5 text-slate-600">{{ orderTypeLabel(sale.orderType) }}</td>
                   <td class="px-4 py-2.5 text-slate-600">{{ sale.tableName ? 'Table ' + sale.tableName : sale.customerName ?? '—' }}</td>
                   <td class="px-4 py-2.5">
@@ -100,61 +103,29 @@ const PAGE_SIZE = 20;
       }
     </div>
 
-    <app-modal [open]="!!selectedSale()" (close)="selectedSale.set(null)">
-      @if (selectedSale(); as sale) {
-        <div class="flex items-start justify-between">
-          <div>
-            <h2 class="text-base font-semibold text-slate-900">Invoice {{ sale.invoiceNumber ?? '(Held)' }}</h2>
-            <p class="mt-1 text-sm text-slate-500">{{ orderTypeLabel(sale.orderType) }} · {{ sale.tableName ? 'Table ' + sale.tableName : sale.customerName ?? 'Walk-in' }}</p>
-          </div>
-          <span class="rounded-full px-2 py-0.5 text-xs font-medium" [class]="statusBadgeClass(sale.status)">{{ sale.status }}</span>
-        </div>
-
-        @if (sale.status === 'Voided' && sale.voidReason) {
-          <p class="mt-3 rounded-md bg-red-50 px-3 py-2 text-xs text-red-700">Voided: {{ sale.voidReason }}</p>
-        }
-        @if (sale.originalSaleId) {
-          <p class="mt-3 rounded-md bg-amber-50 px-3 py-2 text-xs text-amber-700">Reissued to correct a previous invoice.</p>
-        }
-
-        <ul class="mt-4 divide-y divide-slate-100 text-sm">
-          @for (item of sale.items; track item.id) {
-            <li class="py-2">
-              <div class="flex justify-between">
-                <span class="font-medium text-slate-900">{{ item.quantity }}× {{ item.menuItemName }}</span>
-                <span class="text-slate-600">{{ item.lineTotal | number: '1.2-2' }}</span>
-              </div>
-              @if (item.selectedModifiers.length > 0) {
-                <p class="text-xs text-slate-500">{{ modifierSummary(item) }}</p>
-              }
-            </li>
-          }
-        </ul>
-
-        <dl class="mt-3 space-y-1 border-t border-slate-100 pt-3 text-sm">
-          <div class="flex justify-between text-slate-600"><dt>Subtotal</dt><dd>{{ sale.subtotal | number: '1.2-2' }}</dd></div>
-          @if (sale.discountAmount > 0) {
-            <div class="flex justify-between text-slate-600"><dt>Discount</dt><dd>-{{ sale.discountAmount | number: '1.2-2' }}</dd></div>
-          }
-          <div class="flex justify-between text-slate-600"><dt>Tax</dt><dd>{{ sale.taxAmount | number: '1.2-2' }}</dd></div>
-          <div class="flex justify-between text-base font-semibold text-slate-900"><dt>Total</dt><dd>{{ sale.total | number: '1.2-2' }}</dd></div>
-          @if (sale.paymentMethodName) {
-            <div class="flex justify-between text-xs text-slate-400"><dt>Paid via</dt><dd>{{ sale.paymentMethodName }}</dd></div>
-          }
-        </dl>
-
-        <div class="mt-5 flex justify-end gap-3">
-          <button type="button" (click)="selectedSale.set(null)" class="rounded-md border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50">
-            Close
-          </button>
-          @if (sale.status === 'Punched') {
-            <button type="button" (click)="showVoidModal.set(true)" class="rounded-md bg-red-600 px-4 py-2 text-sm font-medium text-white hover:bg-red-500">
-              Void & Reissue
-            </button>
-          }
-        </div>
+    <!-- Same receipt view the Sale terminal shows right after a Punch — see
+         OrderReceiptModal's own doc comment. footerMode="view": Close +
+         Print (reprint a past invoice), plus this page's own Void & Reissue
+         button projected into the reserved [receipt-extra-actions] slot —
+         OrderReceiptModal has no idea what that button does, it just
+         reserves the spot. -->
+    <app-order-receipt-modal
+      [open]="!!selectedSale()"
+      [sale]="selectedSale()"
+      [restaurantName]="restaurantName()"
+      [receiptFooterText]="receiptFooterText()"
+      [currencySymbol]="currencySymbol()"
+      [paperSize]="receiptPaperSize()"
+      [logoUrl]="logoUrl()"
+      footerMode="view"
+      (closed)="selectedSale.set(null)"
+    >
+      @if (selectedSale()?.status === 'Punched') {
+        <button receipt-extra-actions type="button" (click)="showVoidModal.set(true)" class="flex-1 rounded-md bg-red-600 px-4 py-2 text-sm font-medium text-white hover:bg-red-500">
+          Void & Reissue
+        </button>
       }
-    </app-modal>
+    </app-order-receipt-modal>
 
     <app-void-reissue-modal [open]="showVoidModal()" [sale]="selectedSale()" (closed)="showVoidModal.set(false)" (reissued)="onReissued()" />
   `,
@@ -163,6 +134,8 @@ export class PosBillingPage implements OnInit {
   protected readonly pageSizeValue = PAGE_SIZE;
 
   private readonly saleService = inject(SaleService);
+  private readonly settingsService = inject(SettingsService);
+  private readonly authService = inject(AuthService);
   private readonly destroyRef = inject(DestroyRef);
 
   protected search = '';
@@ -178,9 +151,27 @@ export class PosBillingPage implements OnInit {
   protected readonly selectedSale = signal<Sale | null>(null);
   protected readonly showVoidModal = signal(false);
 
+  // For the sale-detail popup (<app-order-receipt-modal>) — same branding
+  // inputs the Sale terminal itself fetches; this page needs its own copy
+  // since it's a separate route, not a child of the Terminal.
+  protected readonly receiptFooterText = signal<string | null>(null);
+  protected readonly currencySymbol = signal('$');
+  protected readonly receiptPaperSize = signal<ReceiptPaperSize>('Thermal80mm');
+  protected readonly logoUrl = signal<string | null>(null);
+
   private readonly manualRefresh = new Subject<void>();
 
   ngOnInit(): void {
+    this.settingsService
+      .getSettings()
+      .pipe(takeUntilDestroyed(this.destroyRef))
+      .subscribe((settings: PosSettings) => {
+        this.receiptFooterText.set(settings.receiptFooterText);
+        this.currencySymbol.set(settings.currencySymbol);
+        this.receiptPaperSize.set(settings.receiptPaperSize);
+        this.logoUrl.set(settings.logoUrl);
+      });
+
     merge(this.manualRefresh)
       .pipe(
         switchMap(() => this.saleService.search(this.buildFilter()).pipe(catchError(() => of(null)))),
@@ -217,8 +208,8 @@ export class PosBillingPage implements OnInit {
     this.manualRefresh.next();
   }
 
-  protected modifierSummary(item: SaleItem): string {
-    return item.selectedModifiers.map((m) => m.optionName).join(', ');
+  protected restaurantName(): string {
+    return this.authService.currentUser()?.displayName ?? '';
   }
 
   protected orderTypeLabel(type: SaleOrderType): string {

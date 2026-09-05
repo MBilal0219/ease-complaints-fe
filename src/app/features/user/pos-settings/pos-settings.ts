@@ -4,7 +4,7 @@ import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { FormBuilder, FormsModule, ReactiveFormsModule, Validators } from '@angular/forms';
 import { forkJoin } from 'rxjs';
 import { SettingsService } from '../../../core/settings/settings.service';
-import { PaymentMethod, PosSettings } from '../../../core/settings/models';
+import { PaymentMethod, PosSettings, ReceiptPaperSize, ReportingPageSize } from '../../../core/settings/models';
 import { Toggle } from '../../../shared/ui/toggle/toggle';
 import { PaymentMethodFormModal } from '../payment-method-form-modal/payment-method-form-modal';
 
@@ -42,6 +42,34 @@ import { PaymentMethodFormModal } from '../payment-method-form-modal/payment-met
           <div>
             <label for="currency-symbol" class="block text-sm font-medium text-slate-700">Currency symbol</label>
             <input id="currency-symbol" type="text" formControlName="currencySymbol" maxlength="5" class="mt-1 w-28 rounded-md border border-slate-300 px-3 py-2 text-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500" />
+          </div>
+          <div class="sm:col-span-2">
+            <span class="block text-sm font-medium text-slate-700">Receipt size</span>
+            <p class="text-xs text-slate-500">What the Terminal prints when an order is completed.</p>
+            <div class="mt-2 flex gap-6">
+              <label class="flex items-center gap-2 text-sm text-slate-700">
+                <input type="radio" formControlName="receiptPaperSize" value="Thermal80mm" class="text-indigo-600 focus:ring-indigo-500" />
+                Thermal (80mm)
+              </label>
+              <label class="flex items-center gap-2 text-sm text-slate-700">
+                <input type="radio" formControlName="receiptPaperSize" value="A5" class="text-indigo-600 focus:ring-indigo-500" />
+                A5
+              </label>
+            </div>
+          </div>
+          <div class="sm:col-span-2">
+            <span class="block text-sm font-medium text-slate-700">Reporting page size</span>
+            <p class="text-xs text-slate-500">For a future reports/exports feature — not used by anything yet.</p>
+            <div class="mt-2 flex gap-6">
+              <label class="flex items-center gap-2 text-sm text-slate-700">
+                <input type="radio" formControlName="reportingPageSize" value="A4" class="text-indigo-600 focus:ring-indigo-500" />
+                A4
+              </label>
+              <label class="flex items-center gap-2 text-sm text-slate-700">
+                <input type="radio" formControlName="reportingPageSize" value="A5" class="text-indigo-600 focus:ring-indigo-500" />
+                A5
+              </label>
+            </div>
           </div>
           <div class="sm:col-span-2">
             <button
@@ -110,6 +138,8 @@ export class PosSettingsPage implements OnInit {
   protected readonly settingsForm = this.fb.nonNullable.group({
     receiptFooterText: [''],
     currencySymbol: ['$', [Validators.required, Validators.maxLength(5)]],
+    receiptPaperSize: ['Thermal80mm' as ReceiptPaperSize, Validators.required],
+    reportingPageSize: ['A4' as ReportingPageSize, Validators.required],
   });
 
   ngOnInit(): void {
@@ -139,9 +169,9 @@ export class PosSettingsPage implements OnInit {
 
     this.savingSettings.set(true);
     this.errorMessage.set(null);
-    const { receiptFooterText, currencySymbol } = this.settingsForm.getRawValue();
+    const { receiptFooterText, currencySymbol, receiptPaperSize, reportingPageSize } = this.settingsForm.getRawValue();
 
-    this.settingsService.updateSettings({ receiptFooterText: receiptFooterText || null, currencySymbol }).subscribe({
+    this.settingsService.updateSettings({ receiptFooterText: receiptFooterText || null, currencySymbol, receiptPaperSize, reportingPageSize }).subscribe({
       next: (settings) => {
         this.savingSettings.set(false);
         this.applySettings(settings);
@@ -177,7 +207,12 @@ export class PosSettingsPage implements OnInit {
 
   private applySettings(settings: PosSettings): void {
     this.logoPreview.set(settings.logoUrl);
-    this.settingsForm.reset({ receiptFooterText: settings.receiptFooterText ?? '', currencySymbol: settings.currencySymbol });
+    this.settingsForm.reset({
+      receiptFooterText: settings.receiptFooterText ?? '',
+      currencySymbol: settings.currencySymbol,
+      receiptPaperSize: settings.receiptPaperSize,
+      reportingPageSize: settings.reportingPageSize,
+    });
   }
 
   private refreshPaymentMethods(): void {
