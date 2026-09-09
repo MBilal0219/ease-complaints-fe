@@ -6,7 +6,7 @@ import { ActivatedRoute, Router, RouterLink } from '@angular/router';
 import { Subject, catchError, merge, of, switchMap, timer } from 'rxjs';
 import { AdminService } from '../../../core/admin/admin.service';
 import { PersonSummary } from '../../../core/admin/models';
-import { ROLE_ADMIN, ROLE_DEVELOPER } from '../../../core/auth/models';
+import { ROLE_ADMIN, ROLE_DEVELOPER, ROLE_IMPLEMENTATOR } from '../../../core/auth/models';
 import { AuthService } from '../../../core/auth/auth.service';
 import { DealsService } from '../../../core/tickets/deals.service';
 import { TicketsService } from '../../../core/tickets/tickets.service';
@@ -642,7 +642,11 @@ export class TicketDetailPage implements OnInit {
   private readonly messagesRefresh = new Subject<void>();
   private readonly composerDropzone = viewChild<FileDropzone>('composerDropzone');
 
-  protected readonly isAdmin = computed(() => this.authService.currentUser()?.roles.includes(ROLE_ADMIN) ?? false);
+  /** Admin or Implementator — both manage the complaint workflow, see RoleNames.ComplaintManagers on the backend. */
+  protected readonly isAdmin = computed(() => {
+    const roles = this.authService.currentUser()?.roles ?? [];
+    return roles.includes(ROLE_ADMIN) || roles.includes(ROLE_IMPLEMENTATOR);
+  });
   protected readonly isOwner = computed(() => this.authService.currentUser()?.id === this.ticket()?.createdByUserId);
   protected readonly canDeveloperAct = computed(() => {
     const user = this.authService.currentUser();
@@ -667,6 +671,7 @@ export class TicketDetailPage implements OnInit {
   protected readonly backLink = computed(() => {
     const roles = this.authService.currentUser()?.roles ?? [];
     if (roles.includes(ROLE_ADMIN)) return '/app/admin/tickets';
+    if (roles.includes(ROLE_IMPLEMENTATOR)) return '/app/implementator/tickets';
     if (roles.includes(ROLE_DEVELOPER)) return '/app/developer/board';
     return '/app/user/my-complaints';
   });
@@ -699,7 +704,7 @@ export class TicketDetailPage implements OnInit {
         if (messages) this.messages.set(messages);
       });
 
-    if (this.authService.currentUser()?.roles.includes(ROLE_ADMIN)) {
+    if (this.isAdmin()) {
       this.adminService.getDevelopers('', 1, 100).subscribe((result) => this.developers.set(result.items));
     }
   }

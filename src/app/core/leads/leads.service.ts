@@ -12,6 +12,8 @@ export interface LeadFilter {
   dateFrom?: string;
   dateTo?: string;
   search?: string;
+  /** Admin-only — scopes to one sales person's effective leads (Call.salesPersonUserId when referred, else the creator). See ILeadRepository.SearchAsync's own doc comment. */
+  salesPersonUserId?: string;
   page: number;
   pageSize: number;
 }
@@ -43,6 +45,7 @@ export class LeadsService {
     if (filter.dateFrom) params = params.set('dateFrom', filter.dateFrom);
     if (filter.dateTo) params = params.set('dateTo', filter.dateTo);
     if (filter.search) params = params.set('search', filter.search);
+    if (filter.salesPersonUserId) params = params.set('salesPersonUserId', filter.salesPersonUserId);
     return this.http.get<PagedResult<LeadSummary>>(this.base, { params });
   }
 

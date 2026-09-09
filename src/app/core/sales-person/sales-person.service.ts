@@ -2,7 +2,17 @@ import { HttpClient, HttpParams } from '@angular/common/http';
 import { Injectable, inject } from '@angular/core';
 import { Observable } from 'rxjs';
 import { PagedResult, PersonSummary } from '../admin/models';
-import { CallDetailWithPayment, CallOutcome, CallSummary, CreateCallRequest, SalesPersonDashboardStats, UpdateCallRequest } from './models';
+import {
+  CallDetailWithPayment,
+  CallOutcome,
+  CallSummary,
+  CreateCallRequest,
+  CustomerDirectoryEntry,
+  PaymentFollowUpCustomer,
+  PaymentFollowUpSummary,
+  SalesPersonDashboardStats,
+  UpdateCallRequest,
+} from './models';
 
 const BASE = '/api/v1/sales-person';
 
@@ -55,5 +65,25 @@ export class SalesPersonService {
   /** Narrow edit — Notes or PaymentDetail only, matching the call's existing outcome. See UpdateCallRequest's own doc comment. */
   updateCall(id: string, request: UpdateCallRequest): Observable<CallDetailWithPayment> {
     return this.http.put<CallDetailWithPayment>(`${BASE}/calls/${id}`, request);
+  }
+
+  /** The two Payment Follow-Up dashboard cards' numbers — scoped to the caller's own calls only. */
+  getPaymentFollowUpSummary(): Observable<PaymentFollowUpSummary> {
+    return this.http.get<PaymentFollowUpSummary>(`${BASE}/payments/summary`);
+  }
+
+  /** Overdue Payments popup's rows — scoped to the caller's own calls only. */
+  getOverduePayments(): Observable<PaymentFollowUpCustomer[]> {
+    return this.http.get<PaymentFollowUpCustomer[]>(`${BASE}/payments/overdue`);
+  }
+
+  /** Upcoming Payments popup's rows — scoped to the caller's own calls only. */
+  getUpcomingPayments(): Observable<PaymentFollowUpCustomer[]> {
+    return this.http.get<PaymentFollowUpCustomer[]>(`${BASE}/payments/upcoming`);
+  }
+
+  /** Calls page's left-side customer directory sidebar — company-wide, not privacy-sensitive. */
+  getCustomerDirectory(): Observable<CustomerDirectoryEntry[]> {
+    return this.http.get<CustomerDirectoryEntry[]>(`${BASE}/customers/directory`);
   }
 }

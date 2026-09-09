@@ -101,6 +101,9 @@ export interface TicketFilter {
   createdByUserId?: string;
   /// "today" or "last7days" — mirrors the exact cutoff the dashboard stats use, so a card's count and the list it links to can never disagree.
   dateRange?: 'today' | 'last7days';
+  /// Arbitrary date range (e.g. the Admin Dashboard's Developer/Sales drill-down) — an alternative to dateRange, not combined with it in practice.
+  dateFrom?: string;
+  dateTo?: string;
   search?: string;
   page: number;
   pageSize: number;
@@ -219,6 +222,12 @@ export interface StatusOption {
 /// The Admin dashboard's "Pending" card is New+Assigned+InProgress combined — this is both what that card links to and what the Admin tickets filter's "Pending" option expands to before it's sent to the backend (as `status=New,Assigned,InProgress`, comma-joined).
 export const PENDING_STATUSES: TicketStatus[] = ['New', 'Assigned', 'InProgress'];
 export const PENDING_STATUS_QUERY_VALUE = PENDING_STATUSES.join(',');
+
+/// The Admin Dashboard's Developer drill-down "Incomplete/Complete/All" status filter — same New+Assigned+InProgress set as "Pending" above (renamed in that context since "Incomplete work" reads better for a task-workload table) plus its Complete-side counterpart.
+export const INCOMPLETE_STATUSES: TicketStatus[] = ['New', 'Assigned', 'InProgress'];
+export const INCOMPLETE_STATUS_QUERY_VALUE = INCOMPLETE_STATUSES.join(',');
+export const COMPLETE_STATUSES: TicketStatus[] = ['Resolved', 'Closed', 'Sale'];
+export const COMPLETE_STATUS_QUERY_VALUE = COMPLETE_STATUSES.join(',');
 
 /// The Developer dashboard's "High priority (incl. Urgent)" card combines two priority names — a synthetic filter value the Kanban table's priority dropdown understands, matching either.
 export const HIGH_OR_URGENT_PRIORITY_VALUE = 'HighOrUrgent';

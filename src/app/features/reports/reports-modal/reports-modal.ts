@@ -430,19 +430,19 @@ function oneMonthAgo(): string {
             </colgroup>
             <thead>
               <tr class="bg-slate-100">
-                <th class="break-words border-b border-r border-slate-400 py-1 px-1 align-bottom">Customer</th>
-                <th class="break-words border-b border-r border-slate-400 py-1 px-1 text-center align-bottom">Calls</th>
-                <th class="break-words border-b border-r border-slate-400 py-1 px-1 text-center align-bottom">Referrals</th>
-                <th class="break-words border-b border-r border-slate-400 py-1 px-1 text-center align-bottom">Follow-ups</th>
-                <th class="break-words border-b border-r border-slate-400 py-1 px-1 text-center align-bottom">A+</th>
-                <th class="break-words border-b border-r border-slate-400 py-1 px-1 text-center align-bottom">Cool</th>
-                <th class="break-words border-b border-r border-slate-400 py-1 px-1 text-center align-bottom">Warm</th>
-                <th class="break-words border-b border-r border-slate-400 py-1 px-1 text-center align-bottom">Uncategorized</th>
-                <th class="break-words border-b border-r border-slate-400 py-1 px-1 text-center align-bottom">Won</th>
-                <th class="break-words border-b border-r border-slate-400 py-1 px-1 text-center align-bottom">In Progress</th>
-                <th class="break-words border-b border-r border-slate-400 py-1 px-1 text-center align-bottom">Cancelled</th>
-                <th class="break-words border-b border-r border-slate-400 py-1 px-1 text-right align-bottom">Amount</th>
-                <th class="break-words border-b border-slate-400 py-1 px-1 align-bottom">Last Referral</th>
+                <th class="break-words border-b border-r border-slate-400 py-1 px-1 text-center align-middle">Customer</th>
+                <th class="break-words border-b border-r border-slate-400 py-1 px-1 text-center align-middle">Calls</th>
+                <th class="break-words border-b border-r border-slate-400 py-1 px-1 text-center align-middle">Referrals</th>
+                <th class="break-words border-b border-r border-slate-400 py-1 px-1 text-center align-middle">Follow-ups</th>
+                <th class="break-words border-b border-r border-slate-400 py-1 px-1 text-center align-middle">A+</th>
+                <th class="break-words border-b border-r border-slate-400 py-1 px-1 text-center align-middle">Cool</th>
+                <th class="break-words border-b border-r border-slate-400 py-1 px-1 text-center align-middle">Warm</th>
+                <th class="break-words border-b border-r border-slate-400 py-1 px-1 text-center align-middle">Uncategorized</th>
+                <th class="break-words border-b border-r border-slate-400 py-1 px-1 text-center align-middle">Won</th>
+                <th class="break-words border-b border-r border-slate-400 py-1 px-1 text-center align-middle">In Progress</th>
+                <th class="break-words border-b border-r border-slate-400 py-1 px-1 text-center align-middle">Cancelled</th>
+                <th class="break-words border-b border-r border-slate-400 py-1 px-1 text-center align-middle">Amount</th>
+                <th class="break-words border-b border-slate-400 py-1 px-1 text-center align-middle">Last Referral</th>
               </tr>
             </thead>
             <tbody>

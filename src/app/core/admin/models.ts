@@ -2,6 +2,7 @@ export interface DashboardStats {
   totalUsers: number;
   totalDevelopers: number;
   totalSalesPeople: number;
+  totalImplementators: number;
   totalTickets: number;
   newCount: number;
   assignedCount: number;
@@ -17,6 +18,27 @@ export interface DashboardStats {
   totalCalls: number;
   totalReferrals: number;
   complaintsFromCalls: number;
+}
+
+/** One developer's workload card on the Admin Dashboard's Developers drill-down. */
+export interface DeveloperWorkload {
+  developerId: string;
+  developerDisplayName: string;
+  totalParties: number;
+  pendingTasks: number;
+  completedTasks: number;
+  totalTasks: number;
+  pendingAmount: number;
+}
+
+/** One sales person's workload card on the Admin Dashboard's Sales drill-down. */
+export interface SalesPersonWorkload {
+  salesPersonUserId: string;
+  salesPersonDisplayName: string;
+  warmCount: number;
+  dealsCount: number;
+  warmToCoolCount: number;
+  pendingAmount: number;
 }
 
 export interface PersonSummary {
@@ -61,6 +83,15 @@ export interface CreateDeveloperRequest {
 }
 
 export interface CreateSalesPersonRequest {
+  displayName: string;
+  email: string;
+  password: string;
+  /** See CreateDeveloperRequest.branchId. */
+  branchId?: string;
+}
+
+/** Account management only for now — see backend RoleNames.Implementator's own doc comment. */
+export interface CreateImplementatorRequest {
   displayName: string;
   email: string;
   password: string;

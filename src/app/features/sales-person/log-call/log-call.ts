@@ -20,7 +20,22 @@ import { CallSummary } from '../../../core/sales-person/models';
 
 const EMPTY_CUSTOMERS: PagedResult<PersonSummary> = { items: [], totalCount: 0, page: 1, pageSize: 10 };
 const PAYMENT_STATUSES: PaymentCallStatus[] = ['Cleared', 'PartiallyCleared', 'Extended', 'Other'];
-const OUTCOMES: CallOutcome[] = ['Notes', 'Payment', 'Complaint'];
+const OUTCOMES: CallOutcome[] = ['Notes', 'Payment', 'Commitment', 'Complaint'];
+
+/** Quick-pick offsets for a Commitment's promised date — see promiseQuickPicks. */
+const PROMISE_QUICK_PICKS: { label: string; days: number }[] = [
+  { label: '1 week', days: 7 },
+  { label: '2 weeks', days: 14 },
+  { label: '1 month', days: 30 },
+];
+
+/** Local calendar date as YYYY-MM-DD, for a native `<input type="date">` value — see reports-modal.ts's own copy of this helper for why not toISOString(). */
+function isoDate(date: Date): string {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+}
 
 interface LeadDraft {
   name: string;
@@ -45,7 +60,13 @@ interface CallDraft {
   notes: string;
   paymentStatus: PaymentCallStatus;
   paymentAmount: number | null;
+  paymentAmountDue: number | null;
+  paymentDueDate: string;
   paymentRemarks: string;
+  commitmentPromisedDate: string;
+  commitmentReferralRange: string;
+  commitmentRemarks: string;
+  followUpForCallId: string | null;
   complaintTitle: string;
   complaintCategoryId: number | null;
   complaintPriorityId: number | null;
@@ -58,6 +79,18 @@ function blankLead(): LeadDraft {
 
 function draftKey(userId: string): string {
   return `log-call-draft:${userId}`;
+}
+
+/** Separate key from draftKey above so a resumable draft and a follow-up prefill (from the Payment Follow-Up popup) can never collide — see payment-follow-up-modal.ts's callCustomer(). */
+export function logCallPrefillKey(userId: string): string {
+  return `log-call-prefill:${userId}`;
+}
+
+interface CallPrefill {
+  customerId: string;
+  customerDisplayName: string;
+  customerCompanyName: string;
+  followUpForCallId: string;
 }
 
 /**
@@ -245,14 +278,20 @@ function draftKey(userId: string): string {
       <!-- Outcome -->
       <div class="mt-4 rounded-lg border border-slate-200 bg-white p-5">
         <h2 class="text-sm font-semibold text-slate-900">Outcome</h2>
-        <div class="mt-2 flex gap-4">
-          @for (option of outcomes; track option) {
-            <label class="flex items-center gap-1.5 text-sm text-slate-700">
-              <input type="radio" name="outcome" [value]="option" [ngModel]="outcome()" (ngModelChange)="outcome.set($event)" />
-              {{ outcomeLabels[option] }}
-            </label>
-          }
-        </div>
+        @if (followUpForCallId()) {
+          <div class="mt-2 rounded-md border border-sky-200 bg-sky-50 px-3 py-2 text-sm text-sky-800">
+            Follow-up call for {{ selectedCustomer()?.displayName }} — logged as Payment.
+          </div>
+        } @else {
+          <div class="mt-2 flex gap-4">
+            @for (option of outcomes; track option) {
+              <label class="flex items-center gap-1.5 text-sm text-slate-700">
+                <input type="radio" name="outcome" [value]="option" [ngModel]="outcome()" (ngModelChange)="outcome.set($event)" />
+                {{ outcomeLabels[option] }}
+              </label>
+            }
+          </div>
+        }
 
         @if (outcome() === 'Notes') {
           <textarea
@@ -264,7 +303,8 @@ function draftKey(userId: string): string {
         } @else if (outcome() === 'Payment') {
           <div class="mt-3 space-y-2.5 rounded-md border border-slate-200 bg-slate-50 p-3">
             <select
-              [(ngModel)]="paymentStatus"
+              [ngModel]="paymentStatus"
+              (ngModelChange)="onPaymentStatusChange($event)"
               class="w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"
             >
               @for (status of paymentStatuses; track status) {
@@ -279,13 +319,68 @@ function draftKey(userId: string): string {
               [(ngModel)]="paymentAmount"
               class="w-full rounded-md border border-slate-300 px-3 py-2 text-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"
             />
+            @if (paymentStatus !== 'Cleared') {
+              <div class="grid grid-cols-2 gap-2.5">
+                <div>
+                  <label class="block text-xs font-medium text-slate-500">Due date (optional)</label>
+                  <input
+                    type="date"
+                    [(ngModel)]="paymentDueDate"
+                    class="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                  />
+                </div>
+                <div>
+                  <label class="block text-xs font-medium text-slate-500">Amount still due (optional)</label>
+                  <input
+                    type="number"
+                    min="0"
+                    step="0.01"
+                    [(ngModel)]="paymentAmountDue"
+                    class="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                  />
+                </div>
+              </div>
+            }
             <textarea
               rows="2"
               placeholder="Remarks"
               [(ngModel)]="paymentRemarks"
               class="w-full rounded-md border border-slate-300 px-3 py-2 text-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"
             ></textarea>
-            <p class="text-xs text-slate-400">This section is private to you — Admin and Developer never see payment details.</p>
+          </div>
+        } @else if (outcome() === 'Commitment') {
+          <div class="mt-3 space-y-2.5 rounded-md border border-slate-200 bg-slate-50 p-3">
+            <div>
+              <label class="block text-xs font-medium text-slate-500">When did they promise it?</label>
+              <div class="mt-1 flex flex-wrap gap-1.5">
+                @for (pick of promiseQuickPicks; track pick.label) {
+                  <button
+                    type="button"
+                    (click)="pickPromisedDate(pick.days)"
+                    class="rounded-md border border-slate-300 bg-white px-2.5 py-1 text-xs font-medium text-slate-700 hover:bg-slate-100"
+                  >
+                    {{ pick.label }}
+                  </button>
+                }
+              </div>
+              <input
+                type="date"
+                [(ngModel)]="commitmentPromisedDate"
+                class="mt-1.5 w-full rounded-md border border-slate-300 px-3 py-2 text-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+              />
+            </div>
+            <input
+              type="text"
+              placeholder="Referrals promised — e.g. 5 or 2-3"
+              [(ngModel)]="commitmentReferralRange"
+              class="w-full rounded-md border border-slate-300 px-3 py-2 text-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+            />
+            <textarea
+              rows="2"
+              placeholder="Remarks"
+              [(ngModel)]="commitmentRemarks"
+              class="w-full rounded-md border border-slate-300 px-3 py-2 text-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+            ></textarea>
           </div>
         } @else if (outcome() === 'Complaint') {
           <div class="mt-3 space-y-2.5">
@@ -371,6 +466,7 @@ export class LogCallPage implements OnInit {
   protected readonly paymentStatusLabels = PAYMENT_STATUS_LABELS;
   protected readonly outcomes = OUTCOMES;
   protected readonly outcomeLabels = CALL_OUTCOME_LABELS;
+  protected readonly promiseQuickPicks = PROMISE_QUICK_PICKS;
 
   private readonly salesPersonService = inject(SalesPersonService);
   private readonly ticketsService = inject(TicketsService);
@@ -392,7 +488,12 @@ export class LogCallPage implements OnInit {
   protected notes = '';
   protected paymentStatus: PaymentCallStatus = 'Cleared';
   protected paymentAmount: number | null = null;
+  protected paymentAmountDue: number | null = null;
+  protected paymentDueDate = '';
   protected paymentRemarks = '';
+  protected commitmentPromisedDate = '';
+  protected commitmentReferralRange = '';
+  protected commitmentRemarks = '';
   protected complaintTitle = '';
   protected complaintCategoryId: number | null = null;
   protected complaintPriorityId: number | null = null;
@@ -405,6 +506,9 @@ export class LogCallPage implements OnInit {
   protected readonly pendingDraft = signal<CallDraft | null>(null);
   protected readonly showResumeBanner = signal(false);
   private restoringDraft = false;
+
+  /** Set from a Payment Follow-Up popup's Call quick action — see ngOnInit's prefill handling. Locks Outcome to Payment while set. */
+  protected readonly followUpForCallId = signal<string | null>(null);
 
   private readonly draftSnapshot = computed<CallDraft | null>(() => {
     const customer = this.selectedCustomer();
@@ -420,7 +524,13 @@ export class LogCallPage implements OnInit {
       notes: this.notes,
       paymentStatus: this.paymentStatus,
       paymentAmount: this.paymentAmount,
+      paymentAmountDue: this.paymentAmountDue,
+      paymentDueDate: this.paymentDueDate,
       paymentRemarks: this.paymentRemarks,
+      commitmentPromisedDate: this.commitmentPromisedDate,
+      commitmentReferralRange: this.commitmentReferralRange,
+      commitmentRemarks: this.commitmentRemarks,
+      followUpForCallId: this.followUpForCallId(),
       complaintTitle: this.complaintTitle,
       complaintCategoryId: this.complaintCategoryId,
       complaintPriorityId: this.complaintPriorityId,
@@ -445,6 +555,9 @@ export class LogCallPage implements OnInit {
     const outcome = this.outcome();
     if (outcome === 'Notes') return this.notes.trim().length > 0;
     if (outcome === 'Payment') return !!this.paymentStatus;
+    if (outcome === 'Commitment') {
+      return this.commitmentPromisedDate.trim().length > 0 && this.commitmentReferralRange.trim().length > 0;
+    }
     if (outcome === 'Complaint') {
       return this.complaintTitle.trim().length > 0 && this.complaintDescription.trim().length > 0 && !!this.complaintCategoryId && !!this.complaintPriorityId;
     }
@@ -493,6 +606,32 @@ export class LogCallPage implements OnInit {
 
     const userId = this.authService.currentUser()?.id;
     if (!userId) return;
+
+    // A follow-up prefill (from the Payment Follow-Up popup) takes priority
+    // over an old abandoned draft — it's a deliberate, fresh action, so
+    // there's no resume/discard choice to offer here. Consumed once: read
+    // and removed immediately, not only on successful submit.
+    try {
+      const rawPrefill = localStorage.getItem(logCallPrefillKey(userId));
+      if (rawPrefill) {
+        localStorage.removeItem(logCallPrefillKey(userId));
+        const prefill = JSON.parse(rawPrefill) as CallPrefill;
+        this.selectedCustomer.set({
+          id: prefill.customerId,
+          displayName: prefill.customerDisplayName,
+          email: '',
+          companyName: prefill.customerCompanyName,
+          branchName: '',
+        } as PersonSummary);
+        this.outcome.set('Payment');
+        this.followUpForCallId.set(prefill.followUpForCallId);
+        this.salesPersonService.getCalls({ customerUserId: prefill.customerId, page: 1, pageSize: 10 }).subscribe((result) => this.history.set(result.items));
+        return;
+      }
+    } catch {
+      // Corrupt/unreadable prefill — ignore it, fall through to normal flow.
+    }
+
     try {
       const raw = localStorage.getItem(draftKey(userId));
       if (raw) {
@@ -507,6 +646,19 @@ export class LogCallPage implements OnInit {
 
   onSearchChange(term: string): void {
     this.searchTerm.set(term);
+  }
+
+  /** Clearing stale hidden fields when the status flips back to Cleared — otherwise toggling away and back would resurrect a due date/amount the backend would then reject. */
+  protected onPaymentStatusChange(status: PaymentCallStatus): void {
+    this.paymentStatus = status;
+    if (status === 'Cleared') {
+      this.paymentDueDate = '';
+      this.paymentAmountDue = null;
+    }
+  }
+
+  protected pickPromisedDate(daysFromNow: number): void {
+    this.commitmentPromisedDate = isoDate(new Date(Date.now() + daysFromNow * 24 * 60 * 60 * 1000));
   }
 
   selectCustomer(customer: PersonSummary): void {
@@ -556,7 +708,13 @@ export class LogCallPage implements OnInit {
     this.notes = draft.notes;
     this.paymentStatus = draft.paymentStatus;
     this.paymentAmount = draft.paymentAmount;
+    this.paymentAmountDue = draft.paymentAmountDue ?? null;
+    this.paymentDueDate = draft.paymentDueDate ?? '';
     this.paymentRemarks = draft.paymentRemarks;
+    this.commitmentPromisedDate = draft.commitmentPromisedDate ?? '';
+    this.commitmentReferralRange = draft.commitmentReferralRange ?? '';
+    this.commitmentRemarks = draft.commitmentRemarks ?? '';
+    this.followUpForCallId.set(draft.followUpForCallId ?? null);
     this.complaintTitle = draft.complaintTitle;
     this.complaintCategoryId = draft.complaintCategoryId;
     this.complaintPriorityId = draft.complaintPriorityId;
@@ -598,7 +756,23 @@ export class LogCallPage implements OnInit {
         outcome,
         notes: outcome === 'Notes' ? this.notes.trim() : undefined,
         paymentDetail:
-          outcome === 'Payment' ? { status: this.paymentStatus, amountCleared: this.paymentAmount, remarks: this.paymentRemarks.trim() || undefined } : undefined,
+          outcome === 'Payment'
+            ? {
+                status: this.paymentStatus,
+                amountCleared: this.paymentAmount,
+                amountDue: this.paymentStatus !== 'Cleared' ? this.paymentAmountDue : undefined,
+                dueDateUtc: this.paymentStatus !== 'Cleared' ? this.paymentDueDate || undefined : undefined,
+                remarks: this.paymentRemarks.trim() || undefined,
+              }
+            : undefined,
+        commitmentDetail:
+          outcome === 'Commitment'
+            ? {
+                promisedDateUtc: this.commitmentPromisedDate,
+                referralCountRange: this.commitmentReferralRange.trim(),
+                remarks: this.commitmentRemarks.trim() || undefined,
+              }
+            : undefined,
         complaint:
           outcome === 'Complaint'
             ? {
@@ -608,6 +782,7 @@ export class LogCallPage implements OnInit {
                 priorityId: this.complaintPriorityId!,
               }
             : undefined,
+        followUpForCallId: this.followUpForCallId() ?? undefined,
       })
       .subscribe({
         next: (call) => {

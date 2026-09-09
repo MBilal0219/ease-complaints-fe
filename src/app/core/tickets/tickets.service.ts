@@ -133,6 +133,8 @@ export class TicketsService {
     if (filter.assignedDeveloperId) params = params.set('assignedDeveloperId', filter.assignedDeveloperId);
     if (filter.createdByUserId) params = params.set('createdByUserId', filter.createdByUserId);
     if (filter.dateRange) params = params.set('dateRange', filter.dateRange);
+    if (filter.dateFrom) params = params.set('dateFrom', filter.dateFrom);
+    if (filter.dateTo) params = params.set('dateTo', filter.dateTo);
     if (filter.search) params = params.set('search', filter.search);
     return params;
   }
