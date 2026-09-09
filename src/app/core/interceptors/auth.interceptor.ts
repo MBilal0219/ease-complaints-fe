@@ -2,6 +2,7 @@ import { HttpErrorResponse, HttpInterceptorFn } from '@angular/common/http';
 import { inject } from '@angular/core';
 import { Router } from '@angular/router';
 import { catchError, switchMap, throwError } from 'rxjs';
+import { environment } from '../../../environments/environment';
 import { AuthService } from '../auth/auth.service';
 import { CsrfTokenReader } from '../auth/csrf';
 
@@ -22,7 +23,10 @@ export const authInterceptor: HttpInterceptorFn = (req, next) => {
     return next(req);
   }
 
-  let outgoing = req.clone({ withCredentials: true });
+  // Relative in dev (ng serve's proxy.conf.json forwards /api locally);
+  // rewritten to the API's own origin in production, where the frontend is
+  // deployed on a different domain — see environment.prod.ts.
+  let outgoing = req.clone({ url: environment.apiBaseUrl + req.url, withCredentials: true });
 
   if (MUTATING_METHODS.has(req.method)) {
     const token = csrf.read();

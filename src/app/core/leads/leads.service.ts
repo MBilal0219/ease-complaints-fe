@@ -1,6 +1,7 @@
 import { HttpClient, HttpParams } from '@angular/common/http';
 import { Injectable, inject } from '@angular/core';
 import { Observable } from 'rxjs';
+import { environment } from '../../../environments/environment';
 import { PagedResult } from '../admin/models';
 import { AuthService } from '../auth/auth.service';
 import { ROLE_ADMIN } from '../auth/models';
@@ -65,7 +66,9 @@ export class LeadsService {
   }
 
   agreementDocumentDownloadUrl(leadId: string, documentId: string): string {
-    return `${this.base}/${leadId}/agreement-document/${documentId}/download`;
+    // Bound directly into an <a href>/link.href, not an HttpClient call, so
+    // the auth interceptor never sees it — needs the API origin itself.
+    return `${environment.apiBaseUrl}${this.base}/${leadId}/agreement-document/${documentId}/download`;
   }
 
   /** Re-sends the lead's pending Won-conversion invitation (fresh token/expiry, old one revoked). */
