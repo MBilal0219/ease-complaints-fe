@@ -1,5 +1,5 @@
 import { Routes } from '@angular/router';
-import { ROLE_ADMIN, ROLE_BRANCH_ADMIN, ROLE_DEVELOPER, ROLE_SALES_PERSON, ROLE_USER } from './core/auth/models';
+import { ROLE_ADMIN, ROLE_BRANCH_ADMIN, ROLE_DEVELOPER, ROLE_IMPLEMENTATOR, ROLE_SALES_PERSON, ROLE_USER } from './core/auth/models';
 import { authGuard } from './core/guards/auth.guard';
 import { guestGuard } from './core/guards/guest.guard';
 import { roleGuard } from './core/guards/role.guard';
@@ -56,6 +56,8 @@ export const routes: Routes = [
       { path: 'developers/:id', data: { personRole: 'Developer' }, loadComponent: () => import('./features/admin/person-detail/person-detail').then((m) => m.PersonDetailPage) },
       { path: 'sales-people', loadComponent: () => import('./features/admin/sales-people/sales-people').then((m) => m.SalesPeoplePage) },
       { path: 'sales-people/:id', data: { personRole: 'SalesPerson' }, loadComponent: () => import('./features/admin/person-detail/person-detail').then((m) => m.PersonDetailPage) },
+      { path: 'implementators', loadComponent: () => import('./features/admin/implementators/implementators').then((m) => m.ImplementatorsPage) },
+      { path: 'implementators/:id', data: { personRole: 'Implementator' }, loadComponent: () => import('./features/admin/person-detail/person-detail').then((m) => m.PersonDetailPage) },
       { path: 'companies', loadComponent: () => import('./features/admin/companies/companies').then((m) => m.CompaniesPage) },
       { path: 'deals', loadComponent: () => import('./features/admin/deals/deals').then((m) => m.DealsPage) },
       { path: 'calls', loadComponent: () => import('./features/sales-person/calls/calls').then((m) => m.CallsPage) },
@@ -104,6 +106,18 @@ export const routes: Routes = [
       { path: 'pos/tables', loadComponent: () => import('./features/user/pos-tables/pos-tables').then((m) => m.PosTablesPage) },
       { path: 'pos/billing', loadComponent: () => import('./features/user/pos-billing/pos-billing').then((m) => m.PosBillingPage) },
       { path: 'pos/settings', loadComponent: () => import('./features/user/pos-settings/pos-settings').then((m) => m.PosSettingsPage) },
+      { path: 'sessions', loadComponent: () => import('./features/auth/sessions/sessions').then((m) => m.SessionsPage) },
+      { path: 'profile', loadComponent: () => import('./features/profile/profile').then((m) => m.ProfilePage) },
+    ],
+  },
+  {
+    path: 'app/implementator',
+    canActivate: [authGuard, roleGuard(ROLE_IMPLEMENTATOR)],
+    loadComponent: () => import('./features/implementator/implementator-shell').then((m) => m.ImplementatorShell),
+    children: [
+      { path: '', pathMatch: 'full', redirectTo: 'tickets' },
+      { path: 'tickets', loadComponent: () => import('./features/implementator/tickets/tickets').then((m) => m.ImplementatorTicketsPage) },
+      { path: 'tickets/:id', loadComponent: () => import('./features/tickets/ticket-detail/ticket-detail').then((m) => m.TicketDetailPage) },
       { path: 'sessions', loadComponent: () => import('./features/auth/sessions/sessions').then((m) => m.SessionsPage) },
       { path: 'profile', loadComponent: () => import('./features/profile/profile').then((m) => m.ProfilePage) },
     ],

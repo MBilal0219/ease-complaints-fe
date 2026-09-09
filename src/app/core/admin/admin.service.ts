@@ -1,19 +1,22 @@
 import { HttpClient, HttpParams } from '@angular/common/http';
 import { Injectable, inject } from '@angular/core';
 import { Observable } from 'rxjs';
-import { CallSummary } from '../sales-person/models';
+import { CallSummary, CustomerDirectoryEntry, PaymentFollowUpCustomer, PaymentFollowUpSummary } from '../sales-person/models';
 import { CallFilter } from '../sales-person/sales-person.service';
 import {
   BranchOption,
   CreateBranchRequest,
   CreateCompanyRequest,
   CreateDeveloperRequest,
+  CreateImplementatorRequest,
   CreatePartyRequest,
   CreateSalesPersonRequest,
   DashboardStats,
+  DeveloperWorkload,
   PagedResult,
   PersonDetail,
   PersonSummary,
+  SalesPersonWorkload,
 } from './models';
 
 const BASE = '/api/v1/admin';
@@ -24,6 +27,35 @@ export class AdminService {
 
   getDashboardStats(): Observable<DashboardStats> {
     return this.http.get<DashboardStats>(`${BASE}/dashboard`);
+  }
+
+  /** Admin Dashboard's Developers drill-down cards — every Developer's workload within the given date range. */
+  getDeveloperWorkload(dateFrom?: string, dateTo?: string): Observable<DeveloperWorkload[]> {
+    let params = new HttpParams();
+    if (dateFrom) params = params.set('dateFrom', dateFrom);
+    if (dateTo) params = params.set('dateTo', dateTo);
+    return this.http.get<DeveloperWorkload[]>(`${BASE}/dashboard/developers`, { params });
+  }
+
+  /** Admin Dashboard's Sales drill-down cards — every Sales Person's workload within the given date range. */
+  getSalesPersonWorkload(dateFrom?: string, dateTo?: string): Observable<SalesPersonWorkload[]> {
+    let params = new HttpParams();
+    if (dateFrom) params = params.set('dateFrom', dateFrom);
+    if (dateTo) params = params.set('dateTo', dateTo);
+    return this.http.get<SalesPersonWorkload[]>(`${BASE}/dashboard/sales`, { params });
+  }
+
+  /** Admin Dashboard's Payments card — company-wide, a deliberate exception to the usual Sales-Person-private payment rule. */
+  getPaymentSummary(): Observable<PaymentFollowUpSummary> {
+    return this.http.get<PaymentFollowUpSummary>(`${BASE}/payments/summary`);
+  }
+
+  getOverduePayments(): Observable<PaymentFollowUpCustomer[]> {
+    return this.http.get<PaymentFollowUpCustomer[]>(`${BASE}/payments/overdue`);
+  }
+
+  getUpcomingPayments(): Observable<PaymentFollowUpCustomer[]> {
+    return this.http.get<PaymentFollowUpCustomer[]>(`${BASE}/payments/upcoming`);
   }
 
   getParties(search: string, page: number, pageSize: number): Observable<PagedResult<PersonSummary>> {
@@ -38,6 +70,10 @@ export class AdminService {
     return this.http.get<PagedResult<PersonSummary>>(`${BASE}/sales-people`, { params: this.buildParams(search, page, pageSize) });
   }
 
+  getImplementators(search: string, page: number, pageSize: number): Observable<PagedResult<PersonSummary>> {
+    return this.http.get<PagedResult<PersonSummary>>(`${BASE}/implementators`, { params: this.buildParams(search, page, pageSize) });
+  }
+
   /** Oversight view — never includes payment detail, see backend CallDetailDto's own doc comment. */
   getCalls(filter: CallFilter): Observable<PagedResult<CallSummary>> {
     let params = new HttpParams().set('page', filter.page).set('pageSize', filter.pageSize);
@@ -47,6 +83,11 @@ export class AdminService {
     if (filter.dateTo) params = params.set('dateTo', filter.dateTo);
     if (filter.search) params = params.set('search', filter.search);
     return this.http.get<PagedResult<CallSummary>>(`${BASE}/calls`, { params });
+  }
+
+  /** Calls page's left-side customer directory sidebar — company-wide, not privacy-sensitive. */
+  getCustomerDirectory(): Observable<CustomerDirectoryEntry[]> {
+    return this.http.get<CustomerDirectoryEntry[]>(`${BASE}/customers/directory`);
   }
 
   createParty(request: CreatePartyRequest): Observable<PersonSummary> {
@@ -61,6 +102,10 @@ export class AdminService {
     return this.http.post<PersonSummary>(`${BASE}/sales-people`, request);
   }
 
+  createImplementator(request: CreateImplementatorRequest): Observable<PersonSummary> {
+    return this.http.post<PersonSummary>(`${BASE}/implementators`, request);
+  }
+
   getPartyDetail(id: string): Observable<PersonDetail> {
     return this.http.get<PersonDetail>(`${BASE}/parties/${id}`);
   }
@@ -71,6 +116,10 @@ export class AdminService {
 
   getSalesPersonDetail(id: string): Observable<PersonDetail> {
     return this.http.get<PersonDetail>(`${BASE}/sales-people/${id}`);
+  }
+
+  getImplementatorDetail(id: string): Observable<PersonDetail> {
+    return this.http.get<PersonDetail>(`${BASE}/implementators/${id}`);
   }
 
   /** Populates the Company/Branch picker on the Party/Developer/Sales Person "add user" forms, and the standalone Companies page. */

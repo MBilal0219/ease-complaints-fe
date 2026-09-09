@@ -10,13 +10,13 @@ import { AuthService } from '../../../core/auth/auth.service';
 import { ROLE_ADMIN } from '../../../core/auth/models';
 import { RealtimeService } from '../../../core/realtime/realtime.service';
 import { ReportsModal } from '../../reports/reports-modal/reports-modal';
-import { CALL_OUTCOME_BADGE_CLASSES, CALL_OUTCOME_LABELS, CallOutcome, CallSummary } from '../../../core/sales-person/models';
+import { CALL_OUTCOME_BADGE_CLASSES, CALL_OUTCOME_LABELS, CallOutcome, CallSummary, CustomerDirectoryEntry } from '../../../core/sales-person/models';
 import { CallFilter, SalesPersonService } from '../../../core/sales-person/sales-person.service';
 import { Pagination } from '../../../shared/ui/pagination/pagination';
 
 const PAGE_SIZE = 15;
 const POLL_MS = 15_000;
-const OUTCOME_OPTIONS: (CallOutcome | '')[] = ['', 'Complaint', 'Payment', 'Notes'];
+const OUTCOME_OPTIONS: (CallOutcome | '')[] = ['', 'Complaint', 'Payment', 'Commitment', 'Notes'];
 
 /** Local calendar date as YYYY-MM-DD — NOT toISOString(), which converts to UTC first and can land on the wrong day near midnight in timezones ahead of UTC. */
 function isoDate(date: Date): string {
@@ -24,6 +24,19 @@ function isoDate(date: Date): string {
   const month = String(date.getMonth() + 1).padStart(2, '0');
   const day = String(date.getDate()).padStart(2, '0');
   return `${year}-${month}-${day}`;
+}
+
+/** "Today"/"Yesterday"/"N days ago" for the customer directory sidebar's last-interaction line — no relative-time helper exists anywhere else in this codebase yet, see calls.ts's own note on why a plain function over a Pipe. */
+function daysAgoLabel(dateUtc: string | null): string {
+  if (!dateUtc) return 'Never';
+  const then = new Date(dateUtc);
+  const thenDateOnly = new Date(then.getFullYear(), then.getMonth(), then.getDate());
+  const today = new Date();
+  const todayDateOnly = new Date(today.getFullYear(), today.getMonth(), today.getDate());
+  const days = Math.round((todayDateOnly.getTime() - thenDateOnly.getTime()) / 86_400_000);
+  if (days <= 0) return 'Today';
+  if (days === 1) return 'Yesterday';
+  return `${days} days ago`;
 }
 
 /**
@@ -55,102 +68,136 @@ function isoDate(date: Date): string {
       </div>
     </div>
 
-    <div class="mt-4 flex flex-wrap items-end gap-2">
-      <input
-        type="search"
-        placeholder="Search customer or notes…"
-        [(ngModel)]="search"
-        (ngModelChange)="onFilterChange()"
-        class="min-w-0 flex-1 rounded-md border border-slate-300 px-3 py-1.5 text-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"
-      />
-      <select
-        [(ngModel)]="outcomeFilter"
-        (ngModelChange)="onFilterChange()"
-        class="rounded-md border border-slate-300 bg-white py-1.5 pl-3 pr-8 text-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"
-      >
-        @for (option of outcomeOptions; track option) {
-          <option [value]="option">{{ option === '' ? 'Any outcome' : outcomeLabels[option] }}</option>
-        }
-      </select>
-      <div class="flex items-center gap-1.5">
-        <label class="text-xs text-slate-500">From</label>
-        <input
-          type="date"
-          [(ngModel)]="dateFrom"
-          (ngModelChange)="onFilterChange()"
-          class="rounded-md border border-slate-300 px-2 py-1.5 text-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"
-        />
-        <label class="text-xs text-slate-500">To</label>
-        <input
-          type="date"
-          [(ngModel)]="dateTo"
-          (ngModelChange)="onFilterChange()"
-          class="rounded-md border border-slate-300 px-2 py-1.5 text-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"
-        />
-      </div>
-      <button type="button" (click)="applyQuickRange(0)" class="rounded-md border border-slate-300 px-2.5 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-50">Today</button>
-      <button type="button" (click)="applyQuickRange(6)" class="rounded-md border border-slate-300 px-2.5 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-50">Last 7 days</button>
-      @if (dateFrom || dateTo) {
-        <button type="button" (click)="clearDateRange()" class="text-xs font-medium text-slate-500 hover:text-slate-700">Clear dates</button>
-      }
-    </div>
-
-    <div class="mt-4 overflow-hidden rounded-lg border border-slate-200 bg-white">
-      <div class="border-b border-slate-100 p-4">
-        <h2 class="text-sm font-semibold text-slate-900">All calls ({{ result().totalCount }})</h2>
-      </div>
-
-      @if (loading()) {
-        <p class="p-4 text-sm text-slate-500" role="status">Loading…</p>
-      } @else {
-        <div class="divide-y divide-slate-100">
-          @for (call of result().items; track call.id) {
-            @if (isAdmin()) {
-              <div class="p-4">
-                <ng-container [ngTemplateOutlet]="rowContent" [ngTemplateOutletContext]="{ call: call }" />
-              </div>
-            } @else {
-              <a [routerLink]="['/app/sales-person/calls', call.id]" class="block p-4 hover:bg-slate-50">
-                <ng-container [ngTemplateOutlet]="rowContent" [ngTemplateOutletContext]="{ call: call }" />
-              </a>
+    <div class="mt-4 grid grid-cols-1 gap-6 lg:grid-cols-4">
+      <!-- Customer directory — click a customer to filter the table without searching every time. -->
+      <div class="lg:col-span-1">
+        <div class="overflow-hidden rounded-lg border border-slate-200 bg-white">
+          <div class="flex items-center justify-between border-b border-slate-100 p-3">
+            <h2 class="text-xs font-semibold uppercase tracking-wide text-slate-500">Customers</h2>
+            @if (selectedCustomerUserId()) {
+              <button type="button" (click)="selectCustomer(null)" class="text-xs font-medium text-indigo-600 hover:text-indigo-500">Clear</button>
             }
-          } @empty {
-            <p class="p-8 text-center text-sm text-slate-500">No calls logged yet.</p>
-          }
-        </div>
-
-        <ng-template #rowContent let-call="call">
-          <div class="flex flex-wrap items-start justify-between gap-2">
-            <div class="min-w-0">
-              <div class="flex flex-wrap items-center gap-2">
-                <span class="font-semibold text-slate-900">{{ call.customerCompanyName }}</span>
-                @if (call.customerBranchName) {
-                  <span class="text-xs text-slate-400">({{ call.customerBranchName }})</span>
-                }
-                <span class="rounded-full px-2 py-0.5 text-xs font-medium" [class]="outcomeClass(call.outcome)">{{ outcomeLabel(call.outcome) }}</span>
-                @if (call.leadCount > 0) {
-                  <span class="rounded-full bg-indigo-50 px-2 py-0.5 text-xs font-medium text-indigo-700">{{ call.leadCount }} referral{{ call.leadCount === 1 ? '' : 's' }}</span>
-                }
-              </div>
-              <p class="mt-0.5 text-sm text-slate-500">{{ call.customerDisplayName }} <span class="text-slate-400">· {{ call.customerEmail }}</span></p>
-            </div>
-            <span class="shrink-0 text-xs text-slate-400">{{ call.createdAtUtc | date: 'medium' }} · by {{ isMine(call) ? 'you' : call.salesPersonDisplayName }}</span>
           </div>
-          @if (call.previewText) {
-            <p class="mt-2 truncate text-sm text-slate-600">{{ call.previewText }}</p>
-          }
-        </ng-template>
-
-        <div class="p-4">
-          <app-pagination
-            [page]="page()"
-            [totalPages]="totalPages()"
-            [totalItems]="result().totalCount"
-            [pageSize]="pageSizeValue"
-            (pageChange)="goToPage($event)"
-          />
+          <div class="max-h-[40rem] divide-y divide-slate-100 overflow-y-auto">
+            @for (customer of customerDirectory(); track customer.customerUserId) {
+              <button
+                type="button"
+                (click)="selectCustomer(customer.customerUserId)"
+                class="block w-full px-3 py-2.5 text-left text-sm hover:bg-slate-50"
+                [class.bg-indigo-50]="selectedCustomerUserId() === customer.customerUserId"
+              >
+                <p class="font-medium text-slate-900">{{ customer.displayName }}</p>
+                <p class="text-xs text-slate-500">{{ customer.location || '—' }}</p>
+                <p class="text-xs text-slate-400">
+                  {{ daysAgo(customer.lastCallAtUtc) }}{{ customer.lastCallBySalesPersonDisplayName ? ' with ' + lastCallByLabel(customer) : '' }}
+                </p>
+              </button>
+            } @empty {
+              <p class="p-3 text-sm text-slate-400">No customers yet.</p>
+            }
+          </div>
         </div>
-      }
+      </div>
+
+      <div class="lg:col-span-3">
+        <div class="flex flex-wrap items-end gap-2">
+          <input
+            type="search"
+            placeholder="Search customer or notes…"
+            [(ngModel)]="search"
+            (ngModelChange)="onFilterChange()"
+            class="min-w-0 flex-1 rounded-md border border-slate-300 px-3 py-1.5 text-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+          />
+          <select
+            [(ngModel)]="outcomeFilter"
+            (ngModelChange)="onFilterChange()"
+            class="rounded-md border border-slate-300 bg-white py-1.5 pl-3 pr-8 text-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+          >
+            @for (option of outcomeOptions; track option) {
+              <option [value]="option">{{ option === '' ? 'Any outcome' : outcomeLabels[option] }}</option>
+            }
+          </select>
+          <div class="flex items-center gap-1.5">
+            <label class="text-xs text-slate-500">From</label>
+            <input
+              type="date"
+              [(ngModel)]="dateFrom"
+              (ngModelChange)="onFilterChange()"
+              class="rounded-md border border-slate-300 px-2 py-1.5 text-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+            />
+            <label class="text-xs text-slate-500">To</label>
+            <input
+              type="date"
+              [(ngModel)]="dateTo"
+              (ngModelChange)="onFilterChange()"
+              class="rounded-md border border-slate-300 px-2 py-1.5 text-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+            />
+          </div>
+          <button type="button" (click)="applyQuickRange(0)" class="rounded-md border border-slate-300 px-2.5 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-50">Today</button>
+          <button type="button" (click)="applyQuickRange(6)" class="rounded-md border border-slate-300 px-2.5 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-50">Last 7 days</button>
+          @if (dateFrom || dateTo) {
+            <button type="button" (click)="clearDateRange()" class="text-xs font-medium text-slate-500 hover:text-slate-700">Clear dates</button>
+          }
+        </div>
+
+        <div class="mt-4 overflow-hidden rounded-lg border border-slate-200 bg-white">
+          <div class="border-b border-slate-100 p-4">
+            <h2 class="text-sm font-semibold text-slate-900">All calls ({{ result().totalCount }})</h2>
+          </div>
+
+          @if (loading()) {
+            <p class="p-4 text-sm text-slate-500" role="status">Loading…</p>
+          } @else {
+            <div class="divide-y divide-slate-100">
+              @for (call of result().items; track call.id) {
+                @if (isAdmin()) {
+                  <div class="p-4">
+                    <ng-container [ngTemplateOutlet]="rowContent" [ngTemplateOutletContext]="{ call: call }" />
+                  </div>
+                } @else {
+                  <a [routerLink]="['/app/sales-person/calls', call.id]" class="block p-4 hover:bg-slate-50">
+                    <ng-container [ngTemplateOutlet]="rowContent" [ngTemplateOutletContext]="{ call: call }" />
+                  </a>
+                }
+              } @empty {
+                <p class="p-8 text-center text-sm text-slate-500">No calls logged yet.</p>
+              }
+            </div>
+
+            <ng-template #rowContent let-call="call">
+              <div class="flex flex-wrap items-start justify-between gap-2">
+                <div class="min-w-0">
+                  <div class="flex flex-wrap items-center gap-2">
+                    <span class="font-semibold text-slate-900">{{ call.customerCompanyName }}</span>
+                    @if (call.customerBranchName) {
+                      <span class="text-xs text-slate-400">({{ call.customerBranchName }})</span>
+                    }
+                    <span class="rounded-full px-2 py-0.5 text-xs font-medium" [class]="outcomeClass(call.outcome)">{{ outcomeLabel(call.outcome) }}</span>
+                    @if (call.leadCount > 0) {
+                      <span class="rounded-full bg-indigo-50 px-2 py-0.5 text-xs font-medium text-indigo-700">{{ call.leadCount }} referral{{ call.leadCount === 1 ? '' : 's' }}</span>
+                    }
+                  </div>
+                  <p class="mt-0.5 text-sm text-slate-500">{{ call.customerDisplayName }} <span class="text-slate-400">· {{ call.customerEmail }}</span></p>
+                </div>
+                <span class="shrink-0 text-xs text-slate-400">{{ call.createdAtUtc | date: 'medium' }} · by {{ isMine(call) ? 'you' : call.salesPersonDisplayName }}</span>
+              </div>
+              @if (call.previewText) {
+                <p class="mt-2 truncate text-sm text-slate-600">{{ call.previewText }}</p>
+              }
+            </ng-template>
+
+            <div class="p-4">
+              <app-pagination
+                [page]="page()"
+                [totalPages]="totalPages()"
+                [totalItems]="result().totalCount"
+                [pageSize]="pageSizeValue"
+                (pageChange)="goToPage($event)"
+              />
+            </div>
+          }
+        </div>
+      </div>
     </div>
 
     <app-reports-modal [open]="showReports()" (closed)="showReports.set(false)" />
@@ -183,6 +230,9 @@ export class CallsPage implements OnInit {
   protected readonly result = signal<PagedResult<CallSummary>>({ items: [], totalCount: 0, page: 1, pageSize: PAGE_SIZE });
   protected readonly totalPages = signal(1);
 
+  protected readonly customerDirectory = signal<CustomerDirectoryEntry[]>([]);
+  protected readonly selectedCustomerUserId = signal<string | null>(null);
+
   private readonly manualRefresh = new Subject<void>();
 
   ngOnInit(): void {
@@ -203,6 +253,9 @@ export class CallsPage implements OnInit {
       this.dateFrom = isoDate(from);
       this.dateTo = isoDate(to);
     }
+
+    const directory$ = this.isAdmin() ? this.adminService.getCustomerDirectory() : this.salesPersonService.getCustomerDirectory();
+    directory$.pipe(catchError(() => of([] as CustomerDirectoryEntry[])), takeUntilDestroyed(this.destroyRef)).subscribe((directory) => this.customerDirectory.set(directory));
 
     merge(timer(0, POLL_MS), this.manualRefresh, this.realtimeService.notificationCreated$)
       .pipe(
@@ -229,7 +282,23 @@ export class CallsPage implements OnInit {
       dateFrom: this.dateFrom || undefined,
       dateTo: this.dateTo || undefined,
       search: this.search || undefined,
+      customerUserId: this.selectedCustomerUserId() || undefined,
     };
+  }
+
+  /** Clicking the already-selected customer clears the filter — the same "Clear" button in the sidebar header also calls this with null. */
+  protected selectCustomer(customerUserId: string | null): void {
+    this.selectedCustomerUserId.set(this.selectedCustomerUserId() === customerUserId ? null : customerUserId);
+    this.onFilterChange();
+  }
+
+  protected daysAgo(dateUtc: string | null): string {
+    return daysAgoLabel(dateUtc);
+  }
+
+  protected lastCallByLabel(customer: CustomerDirectoryEntry): string {
+    if (customer.lastCallBySalesPersonUserId === this.authService.currentUser()?.id) return 'you';
+    return customer.lastCallBySalesPersonDisplayName ?? '';
   }
 
   onFilterChange(): void {
