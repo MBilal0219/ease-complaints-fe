@@ -2,15 +2,23 @@ import { DatePipe } from '@angular/common';
 import { ChangeDetectionStrategy, Component, DestroyRef, ElementRef, HostListener, OnInit, computed, inject, signal } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { Router } from '@angular/router';
-import { catchError, of, switchMap, timer } from 'rxjs';
+import { catchError, merge, of, switchMap, timer } from 'rxjs';
 import { AuthService } from '../../../core/auth/auth.service';
 import { ROLE_ADMIN, ROLE_DEVELOPER } from '../../../core/auth/models';
 import { NotificationDto } from '../../../core/notifications/models';
 import { NotificationsService } from '../../../core/notifications/notifications.service';
+import { RealtimeService } from '../../../core/realtime/realtime.service';
 
 const POLL_MS = 15_000;
 
-/** Bell + unread badge + dropdown of recent notifications — polled, not pushed (see ADR-003). Lives in the sidebar shell's top bar, present for every role. */
+/**
+ * Bell + unread badge + dropdown of recent notifications. Polling
+ * (see ADR-003) is still the fallback of record — a real-time push (see
+ * docs/modules/realtime.md) just triggers an immediate re-check on top of
+ * it, so a dropped/never-established connection degrades silently back to
+ * "was already correct within POLL_MS anyway."
+ * Lives in the sidebar shell's top bar, present for every role.
+ */
 @Component({
   selector: 'app-notification-bell',
   imports: [DatePipe],
@@ -67,6 +75,7 @@ const POLL_MS = 15_000;
 })
 export class NotificationBell implements OnInit {
   private readonly notificationsService = inject(NotificationsService);
+  private readonly realtimeService = inject(RealtimeService);
   private readonly authService = inject(AuthService);
   private readonly router = inject(Router);
   private readonly destroyRef = inject(DestroyRef);
@@ -84,7 +93,7 @@ export class NotificationBell implements OnInit {
   });
 
   ngOnInit(): void {
-    timer(0, POLL_MS)
+    merge(timer(0, POLL_MS), this.realtimeService.notificationCreated$)
       .pipe(
         switchMap(() => this.notificationsService.getUnreadCount().pipe(catchError(() => of(null)))),
         takeUntilDestroyed(this.destroyRef),

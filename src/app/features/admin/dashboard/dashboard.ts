@@ -1,9 +1,10 @@
 import { ChangeDetectionStrategy, Component, DestroyRef, inject, OnInit, signal } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { RouterLink } from '@angular/router';
-import { catchError, of, switchMap, timer } from 'rxjs';
+import { catchError, merge, of, switchMap, timer } from 'rxjs';
 import { AdminService } from '../../../core/admin/admin.service';
 import { DashboardStats } from '../../../core/admin/models';
+import { RealtimeService } from '../../../core/realtime/realtime.service';
 import { PENDING_STATUS_QUERY_VALUE } from '../../../core/tickets/models';
 
 interface StatCard {
@@ -18,6 +19,7 @@ interface StatCard {
 const CARDS: StatCard[] = [
   { label: 'Total Parties', value: (s) => s.totalUsers, accent: 'bg-indigo-50 text-indigo-700', link: ['/app/admin/parties'] },
   { label: 'Total Developers', value: (s) => s.totalDevelopers, accent: 'bg-violet-50 text-violet-700', link: ['/app/admin/developers'] },
+  { label: 'Total Sales People', value: (s) => s.totalSalesPeople, accent: 'bg-fuchsia-50 text-fuchsia-700', link: ['/app/admin/sales-people'] },
   { label: 'Total Complaints', value: (s) => s.totalTickets, accent: 'bg-slate-100 text-slate-700', link: ['/app/admin/tickets'] },
   // Pending = New + Assigned + InProgress combined (see AdminService.GetDashboardStatsAsync) —
   // the tickets list understands a comma-separated status list for exactly this case.
@@ -30,9 +32,14 @@ const CARDS: StatCard[] = [
   // GetDashboardStatsAsync used for this count — see TicketService.SearchAsync.
   { label: 'New Today', value: (s) => s.newToday, accent: 'bg-indigo-50 text-indigo-700', link: ['/app/admin/tickets'], queryParams: { dateRange: 'today' } },
   { label: 'New Last 7 Days', value: (s) => s.newLast7Days, accent: 'bg-indigo-50 text-indigo-700', link: ['/app/admin/tickets'], queryParams: { dateRange: 'last7days' } },
+  { label: 'Total Calls', value: (s) => s.totalCalls, accent: 'bg-teal-50 text-teal-700', link: ['/app/sales-person/calls'] },
+  { label: 'Total Leads', value: (s) => s.totalReferrals, accent: 'bg-cyan-50 text-cyan-700', link: ['/app/admin/leads'] },
+  { label: 'Complaints from Calls', value: (s) => s.complaintsFromCalls, accent: 'bg-orange-50 text-orange-700', link: ['/app/admin/tickets'] },
+  { label: 'Total Sales', value: (s) => s.totalDeals, accent: 'bg-fuchsia-50 text-fuchsia-700', link: ['/app/admin/deals'] },
+  { label: 'Sales Awaiting Date', value: (s) => s.deliveryDatePendingDeals, accent: 'bg-amber-50 text-amber-700', link: ['/app/admin/deals'], queryParams: { status: 'DeliveryDatePending' } },
 ];
 
-/** Polling stand-in for real-time stats (SignalR is out of scope for now). */
+/** Poll interval — a push (see docs/modules/realtime.md) merges in as an extra, earlier trigger on top of this, not a replacement for it. */
 const STATS_POLL_MS = 15_000;
 
 @Component({
@@ -75,13 +82,14 @@ const STATS_POLL_MS = 15_000;
 export class DashboardPage implements OnInit {
   private readonly adminService = inject(AdminService);
   private readonly destroyRef = inject(DestroyRef);
+  private readonly realtimeService = inject(RealtimeService);
 
   protected readonly cards = CARDS;
   protected readonly stats = signal<DashboardStats | null>(null);
   protected readonly loading = signal(true);
 
   ngOnInit(): void {
-    timer(0, STATS_POLL_MS)
+    merge(timer(0, STATS_POLL_MS), this.realtimeService.notificationCreated$)
       .pipe(
         switchMap(() => this.adminService.getDashboardStats().pipe(catchError(() => of(null)))),
         takeUntilDestroyed(this.destroyRef),

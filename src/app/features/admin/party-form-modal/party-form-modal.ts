@@ -4,13 +4,14 @@ import { FormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
 import { Observable } from 'rxjs';
 import { AdminService } from '../../../core/admin/admin.service';
 import { InvitationsService } from '../../../core/admin/invitations.service';
+import { CompanyPicker } from '../../../shared/ui/company-picker/company-picker';
 import { Modal } from '../../../shared/ui/modal/modal';
 import { PasswordInput } from '../../../shared/ui/password-input/password-input';
 import { Toggle } from '../../../shared/ui/toggle/toggle';
 
 @Component({
   selector: 'app-party-form-modal',
-  imports: [ReactiveFormsModule, Modal, PasswordInput, Toggle],
+  imports: [ReactiveFormsModule, Modal, PasswordInput, Toggle, CompanyPicker],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     <app-modal [open]="open()" (close)="dismiss()">
@@ -56,6 +57,8 @@ import { Toggle } from '../../../shared/ui/toggle/toggle';
           </div>
         }
 
+        <app-company-picker formControlName="orgSelection" />
+
         @if (errorMessage()) {
           <p class="text-sm text-red-600" role="alert">{{ errorMessage() }}</p>
         }
@@ -88,14 +91,16 @@ export class PartyFormModal {
   protected readonly submitting = signal(false);
   protected readonly errorMessage = signal<string | null>(null);
 
-  protected readonly form = this.fb.nonNullable.group({
-    displayName: ['', [Validators.required]],
-    email: ['', [Validators.required, Validators.email]],
-    location: ['', [Validators.required]],
-    branch: ['', [Validators.required]],
-    phoneNumber: ['', [Validators.required]],
-    sendInvite: [true],
-    password: [''],
+  protected readonly form = this.fb.group({
+    displayName: this.fb.nonNullable.control('', [Validators.required]),
+    email: this.fb.nonNullable.control('', [Validators.required, Validators.email]),
+    location: this.fb.nonNullable.control('', [Validators.required]),
+    branch: this.fb.nonNullable.control('', [Validators.required]),
+    phoneNumber: this.fb.nonNullable.control('', [Validators.required]),
+    sendInvite: this.fb.nonNullable.control(true),
+    password: this.fb.nonNullable.control(''),
+    // Encoded "company:<id>" / "branch:<id>" / null — see CompanyPicker's own doc comment.
+    orgSelection: this.fb.control<string | null>(null),
   });
 
   constructor() {
@@ -108,7 +113,7 @@ export class PartyFormModal {
     // Reset to a clean form every time the modal is (re)opened.
     effect(() => {
       if (this.open()) {
-        this.form.reset({ displayName: '', email: '', location: '', branch: '', phoneNumber: '', sendInvite: true, password: '' });
+        this.form.reset({ displayName: '', email: '', location: '', branch: '', phoneNumber: '', sendInvite: true, password: '', orgSelection: null });
         this.errorMessage.set(null);
       }
     });
@@ -128,11 +133,15 @@ export class PartyFormModal {
 
     this.submitting.set(true);
     this.errorMessage.set(null);
-    const { displayName, email, location, branch, phoneNumber, sendInvite, password } = this.form.getRawValue();
+    const { displayName, email, location, branch, phoneNumber, sendInvite, password, orgSelection } = this.form.getRawValue();
+
+    // Decode CompanyPicker's "company:<id>" / "branch:<id>" / null — see its own doc comment.
+    const companyId = orgSelection?.startsWith('company:') ? orgSelection.slice('company:'.length) : undefined;
+    const branchId = orgSelection?.startsWith('branch:') ? orgSelection.slice('branch:'.length) : undefined;
 
     const request$: Observable<unknown> = sendInvite
-      ? this.invitationsService.create({ displayName, email, role: 'User', location, branch, phoneNumber })
-      : this.adminService.createParty({ displayName, email, location, branch, phoneNumber, password });
+      ? this.invitationsService.create({ displayName, email, role: 'User', location, branch, phoneNumber, companyId, branchId })
+      : this.adminService.createParty({ displayName, email, location, branch, phoneNumber, password, companyId, branchId });
 
     request$.subscribe({
       next: () => {

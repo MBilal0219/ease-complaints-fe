@@ -1,3 +1,218 @@
 /* You can add global styles to this file, and also import other style files */
 
 @import 'tailwindcss';
+
+/* POS receipt printing — see features/user/pos-terminal. A normally-empty
+   `#pos-print-area` only the receipt's HTML gets copied into right before
+   window.print() is called. */
+.pos-print-area {
+  display: none;
+}
+
+/* Print isolation for BOTH print targets above/below (.pos-print-area,
+   .report-print-area) — hides literally everything else on the page via
+   `visibility` (not `display`, which would also hide a print target nested
+   inside a now-hidden ancestor — e.g. .report-print-area sits deep inside
+   the app's sidebar/header shell (SidebarLayout), several DOM levels below
+   anything a per-component `.pos-hide-print` class could reach). Then pulls
+   the one visible target out of the page flow (position:absolute at the
+   top-left) so it isn't pushed down by all the now-invisible-but-still-
+   space-occupying content above it in the DOM. This is the standard "print
+   only this element regardless of where it lives in the tree" pattern —
+   robust to nesting depth, unlike hand-marking every other visible
+   ancestor with `.pos-hide-print`. */
+@media print {
+  body * {
+    visibility: hidden;
+  }
+  .pos-print-area[data-paper-size],
+  .pos-print-area[data-paper-size] *,
+  .report-print-area[data-paper-size],
+  .report-print-area[data-paper-size] * {
+    visibility: visible;
+  }
+  .pos-print-area[data-paper-size],
+  .report-print-area[data-paper-size] {
+    display: block !important;
+    position: absolute;
+    left: 0;
+    top: 0;
+  }
+}
+
+/* Receipt paper size — see PosSettings.ReceiptPaperSize / docs/modules/pos-kot-and-printing.md.
+   OrderReceiptModal.print() sets data-paper-size on #pos-print-area right before
+   window.print() is called; each named @page rule (Chromium's `page:` property)
+   controls that one physical print job's page box/margins, while the width on
+   .pos-print-area itself constrains the actual receipt content to match.
+   The A4 rule below isn't reachable from the receipt flow today — A4 was
+   dropped as a ReceiptPaperSize option (Thermal80mm/A5 only) — but it's kept
+   in place for the future reporting/export feature ReportingPageSize (A4/A5)
+   is already sitting ready for, same naming/technique. */
+@page thermal80 {
+  size: 80mm auto;
+  margin: 4mm;
+}
+@page a5 {
+  size: A5;
+  margin: 10mm;
+}
+@page a4 {
+  size: A4;
+  margin: 15mm;
+}
+.pos-print-area[data-paper-size='Thermal80mm'] {
+  page: thermal80;
+  /* Responsive up to 120mm, not a hard 80mm — the @page rule above only
+     takes effect when the selected printer's driver actually honors a
+     custom size; picking a wider roll/paper size in the print dialog
+     (98mm, 142mm, …) overrides it, and a fixed 80mm content width then
+     left-aligns with blank space on the right instead of using the real
+     page width. width:100% fills whatever the actual page turns out to
+     be up to 120mm; past that, max-width caps it and margin:auto centers
+     it instead of stretching further, so the blank space becomes even on
+     both sides rather than one-sided. */
+  width: 100%;
+  max-width: 120mm;
+  margin: 0 auto;
+  /* Own padding, not just the @page margin above — a print driver/virtual
+     printer can ignore @page margin entirely (seen at 88mm: content flush
+     against the physical edge), so this content-level padding is the
+     reliable source of breathing room regardless of paper width or
+     whether the driver honors page margins at all. box-sizing keeps it
+     from pushing the element past width/max-width above. */
+  box-sizing: border-box;
+  padding: 3mm 4mm;
+}
+.pos-print-area[data-paper-size='A5'] {
+  page: a5;
+  /* 148mm A5 width minus the @page a5 10mm-per-side margin above — the
+     printed page box's margin already insets the printable area, so this
+     must be the REMAINING width, not the full physical page width. Using
+     148mm here (as if no margin existed) pushed the right edge 20mm past
+     the page's own right margin boundary, cutting content off. */
+  width: 128mm;
+  box-sizing: border-box;
+  padding: 4mm 6mm;
+}
+.pos-print-area[data-paper-size='A4'] {
+  page: a4;
+  /* 210mm A4 width minus the @page a4 15mm-per-side margin — see A5 note above. */
+  width: 180mm;
+  box-sizing: border-box;
+  padding: 6mm 10mm;
+}
+
+/* Referrals Collection Report printing — see features/reports/reports-modal.
+   Same technique/naming as .pos-print-area above (own print target so it
+   works from a completely different route than the POS terminal — see the
+   combined print-isolation rule above), reusing the same @page a4/a5 rules
+   declared above — this is the feature those were kept in place for. */
+.report-print-area {
+  display: none;
+}
+.report-print-area[data-paper-size='A5'] {
+  page: a5;
+  /* Printable width, not the full physical page width — see the matching
+     .pos-print-area[data-paper-size='A5'] note above; same bug, same fix. */
+  width: 128mm;
+  box-sizing: border-box;
+  padding: 4mm 6mm;
+}
+.report-print-area[data-paper-size='A4'] {
+  page: a4;
+  width: 180mm;
+  box-sizing: border-box;
+  padding: 6mm 10mm;
+}
+
+/* ---------------------------------------------------------------------
+ * Exact tailwind-pos palette (see tailwind-pos/css/style.css and
+ * docs/modules/pos-terminal-ui.md). Tailwind's own built-in cyan is close
+ * but not hex-identical to tailwind-pos's Material cyan scale, and modern
+ * Tailwind dropped "blue-gray" entirely (renamed/replaced by "slate", a
+ * different scale) — so both are declared here, after the `@import
+ * 'tailwindcss'` above, to win the cascade at equal selector specificity.
+ * cyan-* overrides Tailwind's own generated utility outright (cyan is
+ * POS-only in this app, so this is safe app-wide); blue-gray-* is
+ * additive — new classes, not a slate override — so the rest of the app
+ * (already built on slate) is untouched; the Terminal's own template
+ * opts into blue-gray-* explicitly where it wants literal parity with
+ * the reference instead of Tailwind's slate approximation.
+ * --------------------------------------------------------------------- */
+::-webkit-scrollbar {
+  width: 5px;
+}
+::-webkit-scrollbar-track {
+  background: #cfd8dc;
+  border-radius: 5px;
+}
+::-webkit-scrollbar-thumb {
+  background: #b0bec5;
+  border-radius: 5px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #90a4ae;
+}
+
+.bg-cyan-50, .hover\:bg-cyan-50:hover { background-color: #e0f7fa; }
+.bg-cyan-100, .hover\:bg-cyan-100:hover { background-color: #b2ebf2; }
+.bg-cyan-200, .hover\:bg-cyan-200:hover { background-color: #80deea; }
+.bg-cyan-300, .hover\:bg-cyan-300:hover { background-color: #4dd0e1; }
+.bg-cyan-400, .hover\:bg-cyan-400:hover { background-color: #26c6da; }
+.bg-cyan-500, .hover\:bg-cyan-500:hover { background-color: #00bcd4; }
+.bg-cyan-600, .hover\:bg-cyan-600:hover { background-color: #00acc1; }
+.bg-cyan-700, .hover\:bg-cyan-700:hover { background-color: #0097a7; }
+.bg-cyan-800, .hover\:bg-cyan-800:hover { background-color: #00838f; }
+.bg-cyan-900, .hover\:bg-cyan-900:hover { background-color: #006064; }
+
+.text-cyan-50, .hover\:text-cyan-50:hover { color: #e0f7fa; }
+.text-cyan-100, .hover\:text-cyan-100:hover { color: #b2ebf2; }
+.text-cyan-200, .hover\:text-cyan-200:hover { color: #80deea; }
+.text-cyan-300, .hover\:text-cyan-300:hover { color: #4dd0e1; }
+.text-cyan-400, .hover\:text-cyan-400:hover { color: #26c6da; }
+.text-cyan-500, .hover\:text-cyan-500:hover { color: #00bcd4; }
+.text-cyan-600, .hover\:text-cyan-600:hover { color: #00acc1; }
+.text-cyan-700, .hover\:text-cyan-700:hover { color: #0097a7; }
+.text-cyan-800, .hover\:text-cyan-800:hover { color: #00838f; }
+.text-cyan-900, .hover\:text-cyan-900:hover { color: #006064; }
+
+.bg-blue-gray-50, .hover\:bg-blue-gray-50:hover { background-color: #eceff1; }
+.bg-blue-gray-100, .hover\:bg-blue-gray-100:hover { background-color: #cfd8dc; }
+.bg-blue-gray-200, .hover\:bg-blue-gray-200:hover { background-color: #b0bec5; }
+.bg-blue-gray-300, .hover\:bg-blue-gray-300:hover { background-color: #90a4ae; }
+.bg-blue-gray-400, .hover\:bg-blue-gray-400:hover { background-color: #78909c; }
+.bg-blue-gray-500, .hover\:bg-blue-gray-500:hover { background-color: #607d8b; }
+.bg-blue-gray-600, .hover\:bg-blue-gray-600:hover { background-color: #546e7a; }
+.bg-blue-gray-700, .hover\:bg-blue-gray-700:hover { background-color: #455a64; }
+.bg-blue-gray-800, .hover\:bg-blue-gray-800:hover { background-color: #37474f; }
+.bg-blue-gray-900, .hover\:bg-blue-gray-900:hover { background-color: #263238; }
+
+.text-blue-gray-50, .hover\:text-blue-gray-50:hover { color: #eceff1; }
+.text-blue-gray-100, .hover\:text-blue-gray-100:hover { color: #cfd8dc; }
+.text-blue-gray-200, .hover\:text-blue-gray-200:hover { color: #b0bec5; }
+.text-blue-gray-300, .hover\:text-blue-gray-300:hover { color: #90a4ae; }
+.text-blue-gray-400, .hover\:text-blue-gray-400:hover { color: #78909c; }
+.text-blue-gray-500, .hover\:text-blue-gray-500:hover { color: #607d8b; }
+.text-blue-gray-600, .hover\:text-blue-gray-600:hover { color: #546e7a; }
+.text-blue-gray-700, .hover\:text-blue-gray-700:hover { color: #455a64; }
+.text-blue-gray-800, .hover\:text-blue-gray-800:hover { color: #37474f; }
+.text-blue-gray-900, .hover\:text-blue-gray-900:hover { color: #263238; }
+
+/* border-blue-gray-* was missing entirely — Tailwind doesn't recognize
+   "blue-gray" as a real color, so a bare `border` utility paired with
+   `border-blue-gray-N` had no matching color rule and fell back to
+   `border-color: currentColor`, inheriting each input's own (often dark)
+   text color. That's what rendered as a harsh black-looking border,
+   not an actual design choice — this fixes it at the source. */
+.border-blue-gray-50 { border-color: #eceff1; }
+.border-blue-gray-100 { border-color: #cfd8dc; }
+.border-blue-gray-200 { border-color: #b0bec5; }
+.border-blue-gray-300 { border-color: #90a4ae; }
+
+.bg-teal-400, .hover\:bg-teal-400:hover { background-color: #26a69a; }
+.bg-teal-500, .hover\:bg-teal-500:hover { background-color: #009688; }
+
+.nowrap {
+  white-space: nowrap;
+}

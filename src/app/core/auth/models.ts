@@ -28,3 +28,6 @@ export interface InvitationValidation {
 export const ROLE_ADMIN = 'Admin';
 export const ROLE_DEVELOPER = 'Developer';
 export const ROLE_USER = 'User';
+export const ROLE_SALES_PERSON = 'SalesPerson';
+/** Layered on top of ROLE_USER, never instead of it — see backend RoleNames.BranchAdmin's own doc comment. */
+export const ROLE_BRANCH_ADMIN = 'BranchAdmin';

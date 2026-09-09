@@ -12,11 +12,11 @@ import { PagedResult, TICKET_STATUS_BADGE_CLASSES, TICKET_STATUS_LABELS, TicketD
 import { ConfirmDialog } from '../../../shared/ui/confirm-dialog/confirm-dialog';
 import { Pagination } from '../../../shared/ui/pagination/pagination';
 
-type PersonRole = 'Party' | 'Developer';
+type PersonRole = 'Party' | 'Developer' | 'SalesPerson';
 
 const PAGE_SIZE = 10;
 const POLL_MS = 10_000;
-const STATUS_FILTERS: (TicketStatus | '')[] = ['', 'New', 'Assigned', 'InProgress', 'Resolved', 'Rejected', 'Closed', 'Revoked'];
+const STATUS_FILTERS: (TicketStatus | '')[] = ['', 'New', 'Assigned', 'InProgress', 'Resolved', 'Rejected', 'Closed', 'Revoked', 'Sale'];
 
 /** Admin's profile view of one Party or Developer — which one is set by the route (`data.personRole`). */
 @Component({
@@ -68,15 +68,17 @@ const STATUS_FILTERS: (TicketStatus | '')[] = ['', 'New', 'Assigned', 'InProgres
         <p class="mt-3 text-sm text-red-600" role="alert">{{ actionError() }}</p>
       }
 
-      <div class="mt-6 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        <div class="rounded-lg border border-slate-200 bg-white p-4">
-          <p class="text-xs font-medium text-slate-500">{{ role === 'Party' ? 'Complaints raised' : 'Tickets assigned' }}</p>
-          <p class="mt-1 text-2xl font-semibold text-slate-900">{{ p.totalTicketCount }}</p>
-        </div>
-        <div class="rounded-lg border border-slate-200 bg-white p-4">
-          <p class="text-xs font-medium text-slate-500">Currently open</p>
-          <p class="mt-1 text-2xl font-semibold text-slate-900">{{ p.openTicketCount }}</p>
-        </div>
+      <div class="mt-6 grid grid-cols-1 gap-4 sm:grid-cols-2" [class.lg:grid-cols-4]="role !== 'SalesPerson'">
+        @if (role !== 'SalesPerson') {
+          <div class="rounded-lg border border-slate-200 bg-white p-4">
+            <p class="text-xs font-medium text-slate-500">{{ role === 'Party' ? 'Complaints raised' : 'Tickets assigned' }}</p>
+            <p class="mt-1 text-2xl font-semibold text-slate-900">{{ p.totalTicketCount }}</p>
+          </div>
+          <div class="rounded-lg border border-slate-200 bg-white p-4">
+            <p class="text-xs font-medium text-slate-500">Currently open</p>
+            <p class="mt-1 text-2xl font-semibold text-slate-900">{{ p.openTicketCount }}</p>
+          </div>
+        }
         <div class="rounded-lg border border-slate-200 bg-white p-4">
           <p class="text-xs font-medium text-slate-500">Joined</p>
           <p class="mt-1 text-sm font-medium text-slate-700">{{ p.createdAtUtc | date: 'mediumDate' }}</p>
@@ -107,6 +109,7 @@ const STATUS_FILTERS: (TicketStatus | '')[] = ['', 'New', 'Assigned', 'InProgres
         </div>
       }
 
+      @if (role !== 'SalesPerson') {
       <div class="mt-6 overflow-hidden rounded-lg border border-slate-200 bg-white">
         <div class="flex flex-wrap items-center justify-between gap-3 border-b border-slate-100 p-4">
           <h2 class="text-sm font-semibold text-slate-900">
@@ -185,6 +188,7 @@ const STATUS_FILTERS: (TicketStatus | '')[] = ['', 'New', 'Assigned', 'InProgres
           />
         }
       </div>
+      }
 
       <app-confirm-dialog
         [open]="showToggleActiveConfirm()"
@@ -224,7 +228,7 @@ export class PersonDetailPage implements OnInit {
   private readonly destroyRef = inject(DestroyRef);
 
   protected readonly role: PersonRole = this.route.snapshot.data['personRole'];
-  protected readonly backLink = this.role === 'Party' ? '/app/admin/parties' : '/app/admin/developers';
+  protected readonly backLink = { Party: '/app/admin/parties', Developer: '/app/admin/developers', SalesPerson: '/app/admin/sales-people' }[this.role];
   private readonly personId = this.route.snapshot.paramMap.get('id')!;
 
   protected readonly person = signal<PersonDetail | null>(null);
@@ -245,6 +249,13 @@ export class PersonDetailPage implements OnInit {
 
   ngOnInit(): void {
     this.loadPerson();
+
+    // A Sales Person has no ticket relationship yet (arrives with Module 4 —
+    // a call can produce a complaint) — nothing to fetch.
+    if (this.role === 'SalesPerson') {
+      this.ticketsLoading.set(false);
+      return;
+    }
 
     merge(timer(0, POLL_MS), this.ticketsRefresh)
       .pipe(
@@ -270,7 +281,12 @@ export class PersonDetailPage implements OnInit {
   }
 
   private loadPerson(): void {
-    const request$ = this.role === 'Party' ? this.adminService.getPartyDetail(this.personId) : this.adminService.getDeveloperDetail(this.personId);
+    const request$ =
+      this.role === 'Party'
+        ? this.adminService.getPartyDetail(this.personId)
+        : this.role === 'Developer'
+          ? this.adminService.getDeveloperDetail(this.personId)
+          : this.adminService.getSalesPersonDetail(this.personId);
     request$.subscribe({
       next: (person) => this.person.set(person),
       error: () => this.notFound.set(`This ${this.role.toLowerCase()} could not be found.`),

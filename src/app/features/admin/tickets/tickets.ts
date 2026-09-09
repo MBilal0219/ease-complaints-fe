@@ -8,6 +8,7 @@ import { Subject, catchError, merge, of, switchMap, timer } from 'rxjs';
 import { AdminService } from '../../../core/admin/admin.service';
 import { PersonSummary } from '../../../core/admin/models';
 import { TicketsService } from '../../../core/tickets/tickets.service';
+import { RealtimeService } from '../../../core/realtime/realtime.service';
 import {
   PENDING_STATUS_QUERY_VALUE,
   PagedResult,
@@ -26,8 +27,8 @@ const PAGE_SIZE = 10;
 const POLL_MS = 8_000;
 
 /** 'Pending' is a synthetic entry standing in for PENDING_STATUS_QUERY_VALUE — not a real TicketStatus. */
-type StatusFilterOption = '' | 'Pending' | 'New' | 'Assigned' | 'InProgress' | 'Resolved' | 'Rejected' | 'Closed' | 'Revoked';
-const STATUS_FILTERS: StatusFilterOption[] = ['', 'Pending', 'New', 'Assigned', 'InProgress', 'Resolved', 'Rejected', 'Closed', 'Revoked'];
+type StatusFilterOption = '' | 'Pending' | 'New' | 'Assigned' | 'InProgress' | 'Resolved' | 'Rejected' | 'Closed' | 'Revoked' | 'Sale';
+const STATUS_FILTERS: StatusFilterOption[] = ['', 'Pending', 'New', 'Assigned', 'InProgress', 'Resolved', 'Rejected', 'Closed', 'Revoked', 'Sale'];
 type DateRangeFilter = '' | 'today' | 'last7days';
 
 @Component({
@@ -101,6 +102,7 @@ type DateRangeFilter = '' | 'today' | 'last7days';
                 <th class="px-4 py-2.5">Priority</th>
                 <th class="px-4 py-2.5">Party</th>
                 <th class="px-4 py-2.5">Developer</th>
+                <th class="px-4 py-2.5">Total amount</th>
                 <th class="px-4 py-2.5">Submitted</th>
               </tr>
             </thead>
@@ -123,11 +125,14 @@ type DateRangeFilter = '' | 'today' | 'last7days';
                   </td>
                   <td class="cursor-pointer px-4 py-2.5 text-slate-600" [routerLink]="['/app/admin/tickets', ticket.id]">{{ ticket.createdByDisplayName }}</td>
                   <td class="cursor-pointer px-4 py-2.5 text-slate-600" [routerLink]="['/app/admin/tickets', ticket.id]">{{ ticket.assignedDeveloperDisplayName ?? '—' }}</td>
+                  <td class="cursor-pointer px-4 py-2.5 text-slate-600" [routerLink]="['/app/admin/tickets', ticket.id]">
+                    {{ ticket.totalSubComplaintSaleAmount != null ? ticket.totalSubComplaintSaleAmount : '—' }}
+                  </td>
                   <td class="cursor-pointer px-4 py-2.5 text-slate-600" [routerLink]="['/app/admin/tickets', ticket.id]">{{ ticket.createdAtUtc | date: 'mediumDate' }}</td>
                 </tr>
               } @empty {
                 <tr>
-                  <td colspan="7" class="px-4 py-8 text-center text-slate-500">No tickets match this filter.</td>
+                  <td colspan="8" class="px-4 py-8 text-center text-slate-500">No tickets match this filter.</td>
                 </tr>
               }
             </tbody>
@@ -177,6 +182,7 @@ export class AdminTicketsPage implements OnInit {
   private readonly route = inject(ActivatedRoute);
   private readonly router = inject(Router);
   private readonly destroyRef = inject(DestroyRef);
+  private readonly realtimeService = inject(RealtimeService);
 
   protected search = '';
   protected statusFilter: StatusFilterOption = '';
@@ -201,12 +207,13 @@ export class AdminTicketsPage implements OnInit {
     // below, so the URL always reflects what's actually on screen.
     const params = this.route.snapshot.queryParamMap;
     const status = params.get('status');
-    this.statusFilter = status === PENDING_STATUS_QUERY_VALUE ? 'Pending' : ((status as StatusFilterOption) ?? '');
+    // Defaults to Pending (not "All") when no status is in the URL at all — per user feedback.
+    this.statusFilter = status === PENDING_STATUS_QUERY_VALUE ? 'Pending' : ((status as StatusFilterOption) ?? 'Pending');
     this.dateRangeFilter = (params.get('dateRange') as DateRangeFilter) ?? '';
     this.developerFilter = params.get('assignedDeveloperId') ?? '';
     this.search = params.get('search') ?? '';
 
-    merge(timer(0, POLL_MS), this.manualRefresh)
+    merge(timer(0, POLL_MS), this.manualRefresh, this.realtimeService.notificationCreated$)
       .pipe(
         switchMap(() =>
           this.ticketsService.getAdminTickets(this.buildFilter()).pipe(catchError(() => of(null))),

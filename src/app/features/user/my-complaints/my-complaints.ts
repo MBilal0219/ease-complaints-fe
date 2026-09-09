@@ -5,14 +5,15 @@ import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { ActivatedRoute, Router, RouterLink } from '@angular/router';
 import { Subject, catchError, merge, of, switchMap, timer } from 'rxjs';
 import { TicketsService } from '../../../core/tickets/tickets.service';
+import { RealtimeService } from '../../../core/realtime/realtime.service';
 import { PagedResult, TICKET_STATUS_BADGE_CLASSES, TICKET_STATUS_LABELS, TicketDto, TicketStatus, priorityBadgeClasses } from '../../../core/tickets/models';
 import { Pagination } from '../../../shared/ui/pagination/pagination';
 
 const PAGE_SIZE = 10;
 const POLL_MS = 10_000;
 
-/// A Party never sees Resolved/Rejected (masked as InProgress) — see TicketDtoExtensions.MaskForParty on the backend.
-const STATUS_FILTERS: (TicketStatus | '')[] = ['', 'New', 'Assigned', 'InProgress', 'Closed', 'Revoked'];
+/// A Party never sees Resolved (masked as InProgress) — see TicketDtoExtensions.MaskForParty on the backend. Rejected is NOT masked — a Party sees a rejection immediately.
+const STATUS_FILTERS: (TicketStatus | '')[] = ['', 'New', 'Assigned', 'InProgress', 'Rejected', 'Closed', 'Revoked'];
 
 @Component({
   selector: 'app-my-complaints',
@@ -124,6 +125,7 @@ export class MyComplaintsPage implements OnInit {
 
   private readonly ticketsService = inject(TicketsService);
   private readonly destroyRef = inject(DestroyRef);
+  private readonly realtimeService = inject(RealtimeService);
   private readonly route = inject(ActivatedRoute);
   private readonly router = inject(Router);
 
@@ -144,7 +146,7 @@ export class MyComplaintsPage implements OnInit {
     this.statusFilter = (params.get('status') as TicketStatus | null) ?? '';
     this.search = params.get('search') ?? '';
 
-    merge(timer(0, POLL_MS), this.manualRefresh)
+    merge(timer(0, POLL_MS), this.manualRefresh, this.realtimeService.notificationCreated$)
       .pipe(
         switchMap(() =>
           this.ticketsService

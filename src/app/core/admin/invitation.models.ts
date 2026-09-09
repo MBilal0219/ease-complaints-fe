@@ -20,4 +20,7 @@ export interface CreateInvitationRequest {
   location?: string;
   branch?: string;
   phoneNumber?: string;
+  /** Optional — same 3-way Company/Branch resolution as direct-create (see CompanyPicker). Ignored for Developer invitations. */
+  companyId?: string;
+  branchId?: string;
 }

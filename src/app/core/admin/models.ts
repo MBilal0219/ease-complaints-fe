@@ -1,6 +1,7 @@
 export interface DashboardStats {
   totalUsers: number;
   totalDevelopers: number;
+  totalSalesPeople: number;
   totalTickets: number;
   newCount: number;
   assignedCount: number;
@@ -11,6 +12,11 @@ export interface DashboardStats {
   pendingCount: number;
   newToday: number;
   newLast7Days: number;
+  totalDeals: number;
+  deliveryDatePendingDeals: number;
+  totalCalls: number;
+  totalReferrals: number;
+  complaintsFromCalls: number;
 }
 
 export interface PersonSummary {
@@ -21,6 +27,9 @@ export interface PersonSummary {
   createdAtUtc: string;
   lastLoginAtUtc: string | null;
   openTicketCount: number;
+  /** Every user belongs to exactly one Company/Branch — see ADR-005. displayName is the *person's* name, not the company's. */
+  companyName: string;
+  branchName: string;
 }
 
 export interface PagedResult<T> {
@@ -37,12 +46,48 @@ export interface CreatePartyRequest {
   branch: string;
   phoneNumber: string;
   password: string;
+  /** Optional — an existing customer Company's id, from the Company/Branch picker. Adds a new Branch under it instead of a brand-new Company. Ignored if branchId is also given. See sales-person-role.md. */
+  companyId?: string;
+  /** Optional — an existing, currently-unowned customer Branch's id (typically pre-created via the Companies page — see company-management.md). This Party becomes its owner directly; the branch field above is ignored. Takes priority over companyId. */
+  branchId?: string;
 }
 
 export interface CreateDeveloperRequest {
   displayName: string;
   email: string;
   password: string;
+  /** Optional — an existing Branch of the internal Company, from the Company/Branch picker. Defaults to the one internal Branch when omitted. */
+  branchId?: string;
+}
+
+export interface CreateSalesPersonRequest {
+  displayName: string;
+  email: string;
+  password: string;
+  /** See CreateDeveloperRequest.branchId. */
+  branchId?: string;
+}
+
+/** One row of the Admin "add user" Company/Branch picker and the standalone Companies page — see sales-person-role.md and company-management.md. */
+export interface BranchOption {
+  branchId: string;
+  branchName: string;
+  companyId: string;
+  companyName: string;
+  isInternal: boolean;
+  /** Null when this (customer) Branch has no owner yet — e.g. pre-created via the Companies page. Always null for an internal Branch. */
+  ownerUserId: string | null;
+}
+
+/** Creates a brand-new Company + its first Branch, no owning User. See company-management.md. */
+export interface CreateCompanyRequest {
+  companyName: string;
+  branchName: string;
+}
+
+/** Adds a Branch to an already-existing Company — customer or internal alike. */
+export interface CreateBranchRequest {
+  branchName: string;
 }
 
 export interface PersonDetail {

@@ -6,10 +6,12 @@ import {
   DeveloperDashboardStats,
   PagedResult,
   PartyDashboardStats,
+  PostMessageOutcome,
   TicketDto,
   TicketFilter,
   TicketLookups,
   TicketMessageDto,
+  TicketSettings,
 } from './models';
 
 const TICKETS_BASE = '/api/v1/tickets';
@@ -60,6 +62,11 @@ export class TicketsService {
     return this.http.patch<TicketDto>(`/api/v1/admin/tickets/${ticketId}/status`, { status, reason: reason ?? null });
   }
 
+  /** Admin's "Sale" action — converts a complaint into a Deal. See docs/modules/complaint-workflow-v2.md. */
+  convertToSale(ticketId: string, estimatedAmount: number, deliveryDate?: string | null): Observable<TicketDto> {
+    return this.http.post<TicketDto>(`/api/v1/admin/tickets/${ticketId}/sale`, { estimatedAmount, deliveryDate: deliveryDate ?? null });
+  }
+
   /** Only while the complaint is still New/Assigned. */
   revoke(ticketId: string): Observable<TicketDto> {
     return this.http.post<TicketDto>(`/api/v1/user/tickets/${ticketId}/revoke`, {});
@@ -92,7 +99,7 @@ export class TicketsService {
     return this.http.get<TicketMessageDto[]>(`${TICKETS_BASE}/${ticketId}/messages`);
   }
 
-  postMessage(ticketId: string, body: string, files: File[]): Observable<TicketMessageDto> {
+  postMessage(ticketId: string, body: string, files: File[], outcome?: PostMessageOutcome): Observable<TicketMessageDto> {
     const form = new FormData();
     if (body) {
       form.set('Body', body);
@@ -100,7 +107,22 @@ export class TicketsService {
     for (const file of files) {
       form.append('Files', file, file.name);
     }
+    if (outcome) {
+      form.set('ParentMessageId', outcome.parentMessageId);
+      form.set('OutcomeStatus', outcome.outcomeStatus);
+      if (outcome.saleAmount != null) form.set('SaleAmount', String(outcome.saleAmount));
+      if (outcome.reassignedToDeveloperId) form.set('ReassignedToDeveloperId', outcome.reassignedToDeveloperId);
+    }
     return this.http.post<TicketMessageDto>(`${TICKETS_BASE}/${ticketId}/messages`, form);
+  }
+
+  /** Admin-only — whether a Party can see per-message/total Sale amounts on their own complaints. */
+  getTicketSettings(): Observable<TicketSettings> {
+    return this.http.get<TicketSettings>('/api/v1/admin/ticket-settings');
+  }
+
+  updateTicketSettings(showSaleAmountToParty: boolean): Observable<TicketSettings> {
+    return this.http.put<TicketSettings>('/api/v1/admin/ticket-settings', { showSaleAmountToParty });
   }
 
   private buildParams(filter: TicketFilter): HttpParams {
