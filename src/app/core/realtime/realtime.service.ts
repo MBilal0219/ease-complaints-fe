@@ -1,6 +1,7 @@
 import { Injectable } from '@angular/core';
 import * as signalR from '@microsoft/signalr';
 import { Subject } from 'rxjs';
+import { environment } from '../../../environments/environment';
 
 export interface NotificationPushPayload {
   id: string;
@@ -33,7 +34,7 @@ export class RealtimeService {
     if (this.connection) return;
 
     this.connection = new signalR.HubConnectionBuilder()
-      .withUrl('/api/hubs/notifications')
+      .withUrl(environment.apiBaseUrl + '/api/hubs/notifications')
       .withAutomaticReconnect()
       .build();
 

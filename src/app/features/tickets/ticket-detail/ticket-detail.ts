@@ -7,6 +7,7 @@ import { Subject, catchError, merge, of, switchMap, timer } from 'rxjs';
 import { AdminService } from '../../../core/admin/admin.service';
 import { PersonSummary } from '../../../core/admin/models';
 import { ROLE_ADMIN, ROLE_DEVELOPER, ROLE_IMPLEMENTATOR } from '../../../core/auth/models';
+import { environment } from '../../../../environments/environment';
 import { AuthService } from '../../../core/auth/auth.service';
 import { DealsService } from '../../../core/tickets/deals.service';
 import { TicketsService } from '../../../core/tickets/tickets.service';
@@ -262,14 +263,14 @@ const OUTCOME_OPTIONS: TicketMessageOutcomeStatus[] = ['InProgress', 'Resolved',
                     <div class="mt-2 flex flex-wrap gap-2">
                       @for (attachment of message.attachments; track attachment.id) {
                         @if (attachment.category === 'Image') {
-                          <a [href]="attachment.downloadUrl" target="_blank" rel="noopener" class="block">
-                            <img [src]="attachment.downloadUrl" [alt]="attachment.originalFileName" class="h-24 w-24 rounded-md border border-slate-200 object-cover hover:opacity-90" />
+                          <a [href]="fileUrl(attachment.downloadUrl)" target="_blank" rel="noopener" class="block">
+                            <img [src]="fileUrl(attachment.downloadUrl)" [alt]="attachment.originalFileName" class="h-24 w-24 rounded-md border border-slate-200 object-cover hover:opacity-90" />
                           </a>
                         } @else if (attachment.category === 'Video') {
-                          <video [src]="attachment.downloadUrl" controls class="h-32 max-w-full rounded-md border border-slate-200 bg-black"></video>
+                          <video [src]="fileUrl(attachment.downloadUrl)" controls class="h-32 max-w-full rounded-md border border-slate-200 bg-black"></video>
                         } @else {
                           <a
-                            [href]="attachment.downloadUrl"
+                            [href]="fileUrl(attachment.downloadUrl)"
                             target="_blank"
                             rel="noopener"
                             class="flex items-center gap-1.5 rounded-md border border-slate-200 bg-white px-2.5 py-1.5 text-xs font-medium text-slate-600 hover:bg-slate-50"
@@ -641,6 +642,11 @@ export class TicketDetailPage implements OnInit {
 
   private readonly messagesRefresh = new Subject<void>();
   private readonly composerDropzone = viewChild<FileDropzone>('composerDropzone');
+
+  /** Attachment downloadUrl fields come from the backend as relative paths, bound directly into <a href>/<img src> — not an HttpClient call, so the auth interceptor never rewrites them. Needs the API's own origin in production (see environment.apiBaseUrl). */
+  protected fileUrl(relativeUrl: string): string {
+    return environment.apiBaseUrl + relativeUrl;
+  }
 
   /** Admin or Implementator — both manage the complaint workflow, see RoleNames.ComplaintManagers on the backend. */
   protected readonly isAdmin = computed(() => {
