@@ -6,4 +6,6 @@ export interface NavItem {
   iconPath: string;
   /** Present on a group header (e.g. "Complaints", "POS") — rendered as a collapsible section, auto-expanded when the active route is one of these. */
   children?: NavItem[];
+  /** Omit to show unconditionally. When set, the item is hidden unless the current user has at least one of these roles — see user-shell.ts for the one shell that currently uses this. */
+  roles?: string[];
 }

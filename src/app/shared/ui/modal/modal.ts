@@ -15,18 +15,31 @@ import { ApplicationRef, ChangeDetectionStrategy, Component, inject, input, outp
     @if (open()) {
       <div class="pos-hide-print fixed inset-0 z-50 flex items-center justify-center p-4">
         <div class="fixed inset-0 bg-slate-900/50 backdrop-blur-[1px]" (click)="emitClose()"></div>
-        <div class="relative w-full {{ maxWidthClass() }} rounded-xl bg-white p-6 shadow-xl" role="dialog" aria-modal="true">
+        <div
+          class="relative flex max-h-[90vh] w-full {{ maxWidthClass() }} flex-col rounded-xl bg-white shadow-xl"
+          role="dialog"
+          aria-modal="true"
+        >
           <button
             type="button"
             (click)="emitClose()"
             aria-label="Close"
-            class="absolute right-4 top-4 rounded-md p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-600"
+            class="absolute right-4 top-4 z-10 rounded-md p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-600"
           >
             <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" class="h-5 w-5">
               <path stroke-linecap="round" stroke-linejoin="round" d="M6 18 18 6M6 6l12 12" />
             </svg>
           </button>
-          <ng-content />
+          <!-- Own scroll container, not the dialog itself — keeps the close
+               button fixed at the corner instead of scrolling away with
+               tall content (e.g. the Reports modal's filters + type toggle
+               + Print button + results table, which previously had no
+               bound on the dialog's height at all and could push its own
+               top controls off-screen with nothing to scroll them back
+               into view). -->
+          <div class="overflow-y-auto p-6">
+            <ng-content />
+          </div>
         </div>
       </div>
     }

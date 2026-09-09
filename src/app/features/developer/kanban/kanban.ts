@@ -5,6 +5,7 @@ import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { ActivatedRoute, Router, RouterLink } from '@angular/router';
 import { Subject, catchError, merge, of, switchMap, timer } from 'rxjs';
 import { TicketsService } from '../../../core/tickets/tickets.service';
+import { RealtimeService } from '../../../core/realtime/realtime.service';
 import {
   HIGH_OR_URGENT_PRIORITY_VALUE,
   TICKET_STATUS_BADGE_CLASSES,
@@ -218,6 +219,7 @@ export class KanbanPage implements OnInit {
 
   private readonly ticketsService = inject(TicketsService);
   private readonly destroyRef = inject(DestroyRef);
+  private readonly realtimeService = inject(RealtimeService);
   private readonly route = inject(ActivatedRoute);
   private readonly router = inject(Router);
 
@@ -277,7 +279,7 @@ export class KanbanPage implements OnInit {
     this.statusFilter.set((params.get('status') as TicketStatus | null) ?? '');
     this.priorityFilter.set(params.get('priority') ?? '');
 
-    merge(timer(0, POLL_MS), this.manualRefresh)
+    merge(timer(0, POLL_MS), this.manualRefresh, this.realtimeService.notificationCreated$)
       .pipe(
         switchMap(() =>
           this.ticketsService.getDeveloperTickets({ page: 1, pageSize: 200 }).pipe(catchError(() => of(null))),

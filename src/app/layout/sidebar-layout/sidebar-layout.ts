@@ -3,7 +3,10 @@ import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { NavigationEnd, Router, RouterLink, RouterLinkActive, RouterOutlet } from '@angular/router';
 import { filter, interval, switchMap } from 'rxjs';
 import { AuthService } from '../../core/auth/auth.service';
+import { RealtimeService } from '../../core/realtime/realtime.service';
+import { ToastService } from '../../core/toast/toast.service';
 import { NotificationBell } from '../../shared/ui/notification-bell/notification-bell';
+import { Toast } from '../../shared/ui/toast/toast';
 import { NavItem } from './nav-item';
 
 /** Polling stand-in for real-time session push — see docs/modules/authentication.md. */
@@ -44,7 +47,7 @@ const MOBILE_BREAKPOINT_PX = 768;
  */
 @Component({
   selector: 'app-sidebar-layout',
-  imports: [RouterOutlet, RouterLink, RouterLinkActive, NotificationBell],
+  imports: [RouterOutlet, RouterLink, RouterLinkActive, NotificationBell, Toast],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     <div class="flex h-dvh flex-col overflow-hidden bg-slate-50">
@@ -232,6 +235,8 @@ const MOBILE_BREAKPOINT_PX = 768;
         </main>
       </div>
     </div>
+
+    <app-toast />
   `,
 })
 export class SidebarLayout implements OnInit {
@@ -245,6 +250,8 @@ export class SidebarLayout implements OnInit {
   protected readonly authService = inject(AuthService);
   private readonly router = inject(Router);
   private readonly destroyRef = inject(DestroyRef);
+  private readonly realtimeService = inject(RealtimeService);
+  private readonly toastService = inject(ToastService);
 
   @ViewChild('accountMenuRoot') private accountMenuRoot?: ElementRef<HTMLElement>;
 
@@ -307,6 +314,21 @@ export class SidebarLayout implements OnInit {
   }
 
   ngOnInit(): void {
+    // Connected for the lifetime of this shell (every authenticated route
+    // renders inside one) — see docs/modules/realtime.md. Consumers
+    // (notification-bell, list pages) inject RealtimeService directly
+    // rather than this component re-broadcasting events further.
+    this.realtimeService.connect();
+    this.destroyRef.onDestroy(() => this.realtimeService.disconnect());
+
+    // Surfaces every push as a toast on top of the notification bell's own
+    // badge/list — see ToastService's doc comment. Purely additive: a
+    // dropped connection just means no toast, same "degrades to polling
+    // only" story as everywhere else that consumes this observable.
+    this.realtimeService.notificationCreated$.pipe(takeUntilDestroyed(this.destroyRef)).subscribe((payload) => {
+      this.toastService.show(payload.title, payload.message, payload.ticketId);
+    });
+
     // Auto-expand whichever group the current route is actually inside of,
     // once, at load — after that the user's own clicks are in charge.
     const currentUrl = this.router.url;

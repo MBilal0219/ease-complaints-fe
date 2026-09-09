@@ -1,0 +1,249 @@
+> Building...
+√ Building...
+Browser bundles     
+Initial chunk files  | Names            |  Raw size
+styles.css           | styles           |  65.13 kB | 
+main.js              | main             |  15.80 kB | 
+chunk-S3XKPL7P.js    | -                |   5.05 kB | 
+chunk-VUJOFXKG.js    | -                | 987 bytes | 
+chunk-ZAFCNYCC.js    | -                | 570 bytes | 
+chunk-VGX4URVJ.js    | -                | 384 bytes | 
+
+                     | Initial total    |  87.91 kB
+
+Lazy chunk files     | Names            |  Raw size
+chunk-4YHIKGKG.js    | pos-terminal     | 178.50 kB | 
+chunk-RLAEIXY5.js    | ticket-detail    | 117.80 kB | 
+chunk-PN3KR7IX.js    | calls            | 112.14 kB | 
+chunk-K5P33SEJ.js    | lead-detail      |  89.85 kB | 
+chunk-QY7XSZOQ.js    | log-call         |  69.19 kB | 
+chunk-EOYRJOQM.js    | pos-products     |  64.78 kB | 
+chunk-KI2QJ62Z.js    | -                |  61.96 kB | 
+chunk-RTDPYZRC.js    | pos-tables       |  51.90 kB | 
+chunk-K3H5KDU7.js    | parties          |  48.13 kB | 
+chunk-4RYKSWPJ.js    | call-detail      |  41.54 kB | 
+chunk-XXGTHGRV.js    | person-detail    |  39.63 kB | 
+chunk-EZP5AGFK.js    | pos-settings     |  39.51 kB | 
+chunk-E2VDLKY6.js    | pos-billing      |  39.26 kB | 
+chunk-INHBMK36.js    | pos-categories   |  38.76 kB | 
+chunk-JB4IT457.js    | kanban           |  36.34 kB | 
+...and 50 more lazy chunks files. Use "--verbose" to show all the files.
+
+
+Server bundles      
+Initial chunk files  | Names            |  Raw size
+main.server.mjs      | main.server      |  17.06 kB | 
+chunk-K6BTTXRL.mjs   | -                |   5.03 kB | 
+server.mjs           | server           |   2.08 kB | 
+chunk-54EZUNS5.mjs   | -                | 972 bytes | 
+chunk-3PPASBUK.mjs   | -                | 556 bytes | 
+chunk-T7YBAHJ4.mjs   | -                | 370 bytes | 
+polyfills.server.mjs | polyfills.server | 268 bytes | 
+
+Lazy chunk files     | Names            |  Raw size
+chunk-XLW6KNX4.mjs   | pos-terminal     | 178.49 kB | 
+chunk-3I4A5MNC.mjs   | ticket-detail    | 117.79 kB | 
+chunk-KRQ3DLEZ.mjs   | calls            | 112.13 kB | 
+chunk-HZ6HKQ5Z.mjs   | lead-detail      |  89.84 kB | 
+chunk-4VOZK6FS.mjs   | log-call         |  69.18 kB | 
+chunk-LN3CTO4I.mjs   | pos-products     |  64.77 kB | 
+chunk-4KT4YDTB.mjs   | -                |  61.95 kB | 
+chunk-WVPV5K65.mjs   | pos-tables       |  51.88 kB | 
+chunk-YSBRPOJI.mjs   | parties          |  48.12 kB | 
+chunk-6OKF3PLX.mjs   | call-detail      |  41.53 kB | 
+chunk-ZFJBO7BK.mjs   | person-detail    |  39.62 kB | 
+chunk-ZRNFO4XL.mjs   | pos-settings     |  39.50 kB | 
+chunk-ABKKMYDG.mjs   | pos-billing      |  39.25 kB | 
+chunk-X3UXEL26.mjs   | pos-categories   |  38.75 kB | 
+chunk-RZ6MWHJE.mjs   | kanban           |  36.33 kB | 
+...and 50 more lazy chunks files. Use "--verbose" to show all the files.
+
+Application bundle generation complete. [6.138 seconds] - 2026-09-08T14:23:44.547Z
+
+Watch mode enabled. Watching for file changes...
+NOTE: Raw file sizes do not reflect development server per-request transformations.
+  ➜  Local:   http://localhost:4200/
+  ➜  press h + enter to show help
+> Changes detected. Rebuilding...
+√ Changes detected. Rebuilding...
+Browser bundles    
+Initial chunk files | Names       |  Raw size
+styles.css          | styles      |  65.43 kB | 
+main.js             | main        |  15.80 kB | 
+
+Lazy chunk files    | Names       |  Raw size
+chunk-YSWXZC7N.js   | calls       | 114.15 kB | 
+
+
+Server bundles     
+Initial chunk files | Names       |  Raw size
+main.server.mjs     | main.server |  17.06 kB | 
+
+Lazy chunk files    | Names       |  Raw size
+chunk-ISAWWRTR.mjs  | calls       | 114.14 kB | 
+
+Application bundle generation complete. [3.775 seconds] - 2026-09-08T14:28:55.118Z
+
+Stylesheet update sent to client(s).
+Component update sent to client(s).
+7:30:17 PM [vite] (client) [console.error] [2026-09-08T14:30:17.689Z] Error: Connection disconnected with error 'Error: Server returned an error on close: Connection closed with an error.'.
+7:31:28 PM [vite] (client) [console.error] [2026-09-08T14:31:28.110Z] Error: Connection disconnected with error 'Error: Server returned an error on close: Connection closed with an error.'.
+> Changes detected. Rebuilding...
+√ Changes detected. Rebuilding...
+Browser bundles    
+Initial chunk files | Names       |  Raw size
+styles.css          | styles      |  65.49 kB | 
+main.js             | main        |  15.80 kB | 
+
+Lazy chunk files    | Names       |  Raw size
+chunk-2ZFYE7DI.js   | calls       | 112.80 kB | 
+
+
+Server bundles     
+Initial chunk files | Names       |  Raw size
+main.server.mjs     | main.server |  17.06 kB | 
+
+Lazy chunk files    | Names       |  Raw size
+chunk-IKZGUNN4.mjs  | calls       | 112.80 kB | 
+
+Application bundle generation complete. [1.329 seconds] - 2026-09-08T14:34:49.929Z
+
+Stylesheet update sent to client(s).
+Component update sent to client(s).
+7:39:18 PM [vite] (client) [console.error] [2026-09-08T14:39:18.453Z] Error: Connection disconnected with error 'Error: Server returned an error on close: Connection closed with an error.'.
+> Changes detected. Rebuilding...
+√ Changes detected. Rebuilding...
+Browser bundles    
+Initial chunk files | Names          |  Raw size
+styles.css          | styles         |  65.54 kB | 
+main.js             | main           |  15.80 kB | 
+
+Lazy chunk files    | Names          |  Raw size
+chunk-RKOPDIOB.js   | pos-terminal   | 178.50 kB | 
+chunk-GJPUHSS7.js   | ticket-detail  | 117.80 kB | 
+chunk-VNH7ABKF.js   | calls          | 112.80 kB | 
+chunk-SSXGP3FQ.js   | pos-products   |  64.78 kB | 
+chunk-P6QXWCWO.js   | pos-tables     |  51.90 kB | 
+chunk-MZKPFHQZ.js   | parties        |  48.13 kB | 
+chunk-2AEQVNJZ.js   | person-detail  |  39.63 kB | 
+chunk-MJ32R4HJ.js   | pos-settings   |  39.51 kB | 
+chunk-NAYVU2DE.js   | pos-billing    |  39.26 kB | 
+chunk-MQC53MMT.js   | pos-categories |  38.76 kB | 
+chunk-4242EAL3.js   | -              |  35.30 kB | 
+chunk-NV4BT746.js   | developers     |  33.68 kB | 
+chunk-63TSIBJA.js   | companies      |  32.85 kB | 
+chunk-E7UKW4G4.js   | tickets        |  31.82 kB | 
+chunk-ANC7PSMW.js   | sales-people   |  30.04 kB | 
+...and 4 more lazy chunks files. Use "--verbose" to show all the files.
+
+
+Server bundles     
+Initial chunk files | Names          |  Raw size
+main.server.mjs     | main.server    |  17.06 kB | 
+
+Lazy chunk files    | Names          |  Raw size
+chunk-7SCJKKMQ.mjs  | pos-terminal   | 178.49 kB | 
+chunk-FDLHTUMM.mjs  | ticket-detail  | 117.79 kB | 
+chunk-K4JT2FE5.mjs  | calls          | 112.80 kB | 
+chunk-OFLDPI3Q.mjs  | pos-products   |  64.77 kB | 
+chunk-TPVLM26S.mjs  | pos-tables     |  51.88 kB | 
+chunk-BE3CTKV3.mjs  | parties        |  48.12 kB | 
+chunk-WM53IE3M.mjs  | person-detail  |  39.62 kB | 
+chunk-K5LPGSKM.mjs  | pos-settings   |  39.50 kB | 
+chunk-LRGFCNLQ.mjs  | pos-billing    |  39.25 kB | 
+chunk-XPEA5CLP.mjs  | pos-categories |  38.75 kB | 
+chunk-RSOTJLA4.mjs  | -              |  35.28 kB | 
+chunk-IKSWCQFB.mjs  | developers     |  33.67 kB | 
+chunk-54C7Y73E.mjs  | companies      |  32.84 kB | 
+chunk-IYQA3A53.mjs  | tickets        |  31.81 kB | 
+chunk-CZSABRB6.mjs  | sales-people   |  30.03 kB | 
+...and 4 more lazy chunks files. Use "--verbose" to show all the files.
+
+Application bundle generation complete. [2.041 seconds] - 2026-09-08T14:40:21.914Z
+
+Stylesheet update sent to client(s).
+Component update sent to client(s).
+> Changes detected. Rebuilding...
+√ Changes detected. Rebuilding...
+Browser bundles    
+Initial chunk files | Names          |  Raw size
+main.js             | main           |  15.80 kB | 
+
+Lazy chunk files    | Names          |  Raw size
+chunk-ZEQXHBEK.js   | pos-terminal   | 178.50 kB | 
+chunk-IWCBHJNI.js   | ticket-detail  | 117.80 kB | 
+chunk-LAJKB5B6.js   | calls          | 112.80 kB | 
+chunk-KXOLJGH5.js   | pos-products   |  64.78 kB | 
+chunk-VTIQIJAL.js   | pos-tables     |  51.90 kB | 
+chunk-IP3UPXCH.js   | parties        |  48.13 kB | 
+chunk-IMLZJEWH.js   | person-detail  |  39.63 kB | 
+chunk-NPKYWYJU.js   | pos-settings   |  39.51 kB | 
+chunk-QITPCRSR.js   | pos-billing    |  39.26 kB | 
+chunk-FTFTCWXB.js   | pos-categories |  38.76 kB | 
+chunk-7MDQSSW3.js   | -              |  35.30 kB | 
+chunk-SNIWZDA5.js   | developers     |  33.68 kB | 
+chunk-RDHM7Z2L.js   | companies      |  32.85 kB | 
+chunk-UFLYNXI6.js   | tickets        |  31.82 kB | 
+chunk-XXNBP7AK.js   | sales-people   |  30.04 kB | 
+...and 4 more lazy chunks files. Use "--verbose" to show all the files.
+
+
+Server bundles     
+Initial chunk files | Names          |  Raw size
+main.server.mjs     | main.server    |  17.06 kB | 
+
+Lazy chunk files    | Names          |  Raw size
+chunk-CHIMMPYW.mjs  | pos-terminal   | 178.49 kB | 
+chunk-446FO3PL.mjs  | ticket-detail  | 117.79 kB | 
+chunk-5SRBVTLL.mjs  | calls          | 112.80 kB | 
+chunk-JNTRSILR.mjs  | pos-products   |  64.77 kB | 
+chunk-3WLKYEMD.mjs  | pos-tables     |  51.88 kB | 
+chunk-SVLX4ZZD.mjs  | parties        |  48.12 kB | 
+chunk-FVCSLZTY.mjs  | person-detail  |  39.62 kB | 
+chunk-YVHMEBPH.mjs  | pos-settings   |  39.50 kB | 
+chunk-WMOVSBYH.mjs  | pos-billing    |  39.25 kB | 
+chunk-H2K5SICM.mjs  | pos-categories |  38.75 kB | 
+chunk-RFZKPY65.mjs  | -              |  35.28 kB | 
+chunk-5VEBG5R7.mjs  | developers     |  33.67 kB | 
+chunk-HZHLEUKT.mjs  | companies      |  32.84 kB | 
+chunk-KZQAFJMD.mjs  | tickets        |  31.81 kB | 
+chunk-TRZAZIVT.mjs  | sales-people   |  30.03 kB | 
+...and 4 more lazy chunks files. Use "--verbose" to show all the files.
+
+Application bundle generation complete. [1.806 seconds] - 2026-09-08T14:40:50.781Z
+
+Component update sent to client(s).
+> Changes detected. Rebuilding...
+√ Changes detected. Rebuilding...
+Browser bundles    
+Initial chunk files | Names       |  Raw size
+main.js             | main        |  15.80 kB | 
+
+Lazy chunk files    | Names       |  Raw size
+chunk-WD6WGODX.js   | calls       | 114.15 kB | 
+
+
+Server bundles     
+Initial chunk files | Names       |  Raw size
+main.server.mjs     | main.server |  17.06 kB | 
+
+Lazy chunk files    | Names       |  Raw size
+chunk-2F574GXD.mjs  | calls       | 114.14 kB | 
+
+Application bundle generation complete. [1.264 seconds] - 2026-09-08T14:43:06.788Z
+
+Component update sent to client(s).
+7:43:43 PM [vite] (client) [console.error] [2026-09-08T14:43:43.372Z] Error: Connection disconnected with error 'Error: Server returned an error on close: Connection closed with an error.'.
+7:46:28 PM [vite] (client) [console.error] [2026-09-08T14:46:28.784Z] Error: Connection disconnected with error 'Error: Server returned an error on close: Connection closed with an error.'.
+7:47:29 PM [vite] (client) [console.error] [2026-09-08T14:47:29.380Z] Error: Connection disconnected with error 'Error: Server returned an error on close: Connection closed with an error.'.
+8:25:07 PM [vite] (client) [console.error] ERROR Error: NG01203: No value accessor for form control name: 'orgSelection'. Find more at https://v22.angular.dev/errors/NG01203
+    at _throwMissingValueAccessorError (http://localhost:4200/@fs/D:/Development/ECMS/eas-complaints/.angular/cache/22.1.6/eas-complaints/vite/deps/@angular_forms.js?v=d0412c15:1938:8)
+    at setUpControlValueAccessor (http://localhost:4200/@fs/D:/Development/ECMS/eas-complaints/.angular/cache/22.1.6/eas-complaints/vite/deps/@angular_forms.js?v=d0412c15:1808:27)
+    at FormControlName._setupWithForm (http://localhost:4200/@fs/D:/Development/ECMS/eas-complaints/.angular/cache/22.1.6/eas-complaints/vite/deps/@angular_forms.js?v=d0412c15:4345:4)
+    at FormGroupDirective.addControl (http://localhost:4200/@fs/D:/Development/ECMS/eas-complaints/.angular/cache/22.1.6/eas-complaints/vite/deps/@angular_forms.js?v=d0412c15:2946:7)
+    at FormControlName._setUpControl (http://localhost:4200/@fs/D:/Development/ECMS/eas-complaints/.angular/cache/22.1.6/eas-complaints/vite/deps/@angular_forms.js?v=d0412c15:4371:37)
+    at FormControlName.ngOnChanges (http://localhost:4200/@fs/D:/Development/ECMS/eas-complaints/.angular/cache/22.1.6/eas-complaints/vite/deps/@angular_forms.js?v=d0412c15:4349:26)
+    at FormControlName.rememberChangeHistoryAndInvokeOnChangesHook (http://localhost:4200/@fs/D:/Development/ECMS/eas-complaints/.angular/cache/22.1.6/eas-complaints/vite/deps/core-BcWiqF-6.js?v=d0412c15:96:8)
+    at callHookInternal (http://localhost:4200/@fs/D:/Development/ECMS/eas-complaints/.angular/cache/22.1.6/eas-complaints/vite/deps/core-BcWiqF-6.js?v=d0412c15:211:8)
+    at callHook (http://localhost:4200/@fs/D:/Development/ECMS/eas-complaints/.angular/cache/22.1.6/eas-complaints/vite/deps/core-BcWiqF-6.js?v=d0412c15:226:9)
+    at callHooks (http://localhost:4200/@fs/D:/Development/ECMS/eas-complaints/.angular/cache/22.1.6/eas-complaints/vite/deps/core-BcWiqF-6.js?v=d0412c15:201:4)

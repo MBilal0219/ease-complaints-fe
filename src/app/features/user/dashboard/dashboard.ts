@@ -18,6 +18,7 @@ const CARDS: StatCard[] = [
   { label: 'New', value: (s) => s.newCount, accent: 'bg-blue-50 text-blue-700', queryParams: { status: 'New' } },
   { label: 'Assigned', value: (s) => s.assignedCount, accent: 'bg-amber-50 text-amber-700', queryParams: { status: 'Assigned' } },
   { label: 'In Progress', value: (s) => s.inProgressCount, accent: 'bg-purple-50 text-purple-700', queryParams: { status: 'InProgress' } },
+  { label: 'Rejected', value: (s) => s.rejectedCount, accent: 'bg-red-50 text-red-700', queryParams: { status: 'Rejected' } },
   { label: 'Closed', value: (s) => s.closedCount, accent: 'bg-slate-100 text-slate-500', queryParams: { status: 'Closed' } },
   { label: 'Revoked', value: (s) => s.revokedCount, accent: 'bg-orange-50 text-orange-700', queryParams: { status: 'Revoked' } },
 ];

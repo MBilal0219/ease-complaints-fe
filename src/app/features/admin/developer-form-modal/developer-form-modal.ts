@@ -4,13 +4,14 @@ import { FormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
 import { Observable } from 'rxjs';
 import { AdminService } from '../../../core/admin/admin.service';
 import { InvitationsService } from '../../../core/admin/invitations.service';
+import { BranchSelect } from '../../../shared/ui/branch-select/branch-select';
 import { Modal } from '../../../shared/ui/modal/modal';
 import { PasswordInput } from '../../../shared/ui/password-input/password-input';
 import { Toggle } from '../../../shared/ui/toggle/toggle';
 
 @Component({
   selector: 'app-developer-form-modal',
-  imports: [ReactiveFormsModule, Modal, PasswordInput, Toggle],
+  imports: [ReactiveFormsModule, Modal, PasswordInput, Toggle, BranchSelect],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     <app-modal [open]="open()" (close)="dismiss()">
@@ -41,6 +42,11 @@ import { Toggle } from '../../../shared/ui/toggle/toggle';
             <app-password-input inputId="dev-password" autocomplete="new-password" formControlName="password" />
           </div>
         }
+
+        <div>
+          <label class="block text-sm font-medium text-slate-700">Branch</label>
+          <app-branch-select formControlName="branchId" />
+        </div>
 
         @if (errorMessage()) {
           <p class="text-sm text-red-600" role="alert">{{ errorMessage() }}</p>
@@ -74,11 +80,13 @@ export class DeveloperFormModal {
   protected readonly submitting = signal(false);
   protected readonly errorMessage = signal<string | null>(null);
 
-  protected readonly form = this.fb.nonNullable.group({
-    displayName: ['', [Validators.required]],
-    email: ['', [Validators.required, Validators.email]],
-    sendInvite: [true],
-    password: [''],
+  protected readonly form = this.fb.group({
+    displayName: this.fb.nonNullable.control('', [Validators.required]),
+    email: this.fb.nonNullable.control('', [Validators.required, Validators.email]),
+    sendInvite: this.fb.nonNullable.control(true),
+    password: this.fb.nonNullable.control(''),
+    // Only used on the direct-create path (sendInvite off) — see docs/modules/sales-person-role.md.
+    branchId: this.fb.control<string | null>(null),
   });
 
   constructor() {
@@ -90,7 +98,7 @@ export class DeveloperFormModal {
 
     effect(() => {
       if (this.open()) {
-        this.form.reset({ displayName: '', email: '', sendInvite: true, password: '' });
+        this.form.reset({ displayName: '', email: '', sendInvite: true, password: '', branchId: null });
         this.errorMessage.set(null);
       }
     });
@@ -110,11 +118,11 @@ export class DeveloperFormModal {
 
     this.submitting.set(true);
     this.errorMessage.set(null);
-    const { displayName, email, sendInvite, password } = this.form.getRawValue();
+    const { displayName, email, sendInvite, password, branchId } = this.form.getRawValue();
 
     const request$: Observable<unknown> = sendInvite
-      ? this.invitationsService.create({ displayName, email, role: 'Developer' })
-      : this.adminService.createDeveloper({ displayName, email, password });
+      ? this.invitationsService.create({ displayName, email, role: 'Developer', branchId: branchId ?? undefined })
+      : this.adminService.createDeveloper({ displayName, email, password, branchId: branchId ?? undefined });
 
     request$.subscribe({
       next: () => {

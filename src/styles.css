@@ -2,19 +2,41 @@
 
 @import 'tailwindcss';
 
-/* POS receipt printing — see features/user/pos-terminal. Same technique as
-   the tailwind-pos reference: everything on the page gets `.pos-hide-print`
-   except a normally-empty `#pos-print-area` that only the receipt's HTML
-   gets copied into right before window.print() is called. */
+/* POS receipt printing — see features/user/pos-terminal. A normally-empty
+   `#pos-print-area` only the receipt's HTML gets copied into right before
+   window.print() is called. */
 .pos-print-area {
   display: none;
 }
+
+/* Print isolation for BOTH print targets above/below (.pos-print-area,
+   .report-print-area) — hides literally everything else on the page via
+   `visibility` (not `display`, which would also hide a print target nested
+   inside a now-hidden ancestor — e.g. .report-print-area sits deep inside
+   the app's sidebar/header shell (SidebarLayout), several DOM levels below
+   anything a per-component `.pos-hide-print` class could reach). Then pulls
+   the one visible target out of the page flow (position:absolute at the
+   top-left) so it isn't pushed down by all the now-invisible-but-still-
+   space-occupying content above it in the DOM. This is the standard "print
+   only this element regardless of where it lives in the tree" pattern —
+   robust to nesting depth, unlike hand-marking every other visible
+   ancestor with `.pos-hide-print`. */
 @media print {
-  .pos-hide-print {
-    display: none !important;
+  body * {
+    visibility: hidden;
   }
-  .pos-print-area {
+  .pos-print-area[data-paper-size],
+  .pos-print-area[data-paper-size] *,
+  .report-print-area[data-paper-size],
+  .report-print-area[data-paper-size] * {
+    visibility: visible;
+  }
+  .pos-print-area[data-paper-size],
+  .report-print-area[data-paper-size] {
     display: block !important;
+    position: absolute;
+    left: 0;
+    top: 0;
   }
 }
 
@@ -64,13 +86,42 @@
 }
 .pos-print-area[data-paper-size='A5'] {
   page: a5;
-  width: 148mm;
+  /* 148mm A5 width minus the @page a5 10mm-per-side margin above — the
+     printed page box's margin already insets the printable area, so this
+     must be the REMAINING width, not the full physical page width. Using
+     148mm here (as if no margin existed) pushed the right edge 20mm past
+     the page's own right margin boundary, cutting content off. */
+  width: 128mm;
   box-sizing: border-box;
   padding: 4mm 6mm;
 }
 .pos-print-area[data-paper-size='A4'] {
   page: a4;
-  width: 210mm;
+  /* 210mm A4 width minus the @page a4 15mm-per-side margin — see A5 note above. */
+  width: 180mm;
+  box-sizing: border-box;
+  padding: 6mm 10mm;
+}
+
+/* Referrals Collection Report printing — see features/reports/reports-modal.
+   Same technique/naming as .pos-print-area above (own print target so it
+   works from a completely different route than the POS terminal — see the
+   combined print-isolation rule above), reusing the same @page a4/a5 rules
+   declared above — this is the feature those were kept in place for. */
+.report-print-area {
+  display: none;
+}
+.report-print-area[data-paper-size='A5'] {
+  page: a5;
+  /* Printable width, not the full physical page width — see the matching
+     .pos-print-area[data-paper-size='A5'] note above; same bug, same fix. */
+  width: 128mm;
+  box-sizing: border-box;
+  padding: 4mm 6mm;
+}
+.report-print-area[data-paper-size='A4'] {
+  page: a4;
+  width: 180mm;
   box-sizing: border-box;
   padding: 6mm 10mm;
 }

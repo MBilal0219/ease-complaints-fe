@@ -3,9 +3,10 @@ import { ActivatedRoute } from '@angular/router';
 
 /**
  * Placeholder for a nav item that's already wired up but whose page hasn't
- * been built yet (see docs/modules/pos-overview.md — POS is being built one
- * sub-module at a time). Title comes from the route's `data.title` so one
- * component can stand in for every not-yet-built leaf.
+ * been built yet (e.g. docs/modules/pos-overview.md, docs/modules/sales-person-role.md —
+ * both built one sub-module at a time). Title/subtitle come from the route's
+ * `data.title`/`data.subtitle` so one component can stand in for every
+ * not-yet-built leaf across any module.
  */
 @Component({
   selector: 'app-coming-soon',
@@ -18,11 +19,12 @@ import { ActivatedRoute } from '@angular/router';
         </svg>
       </div>
       <h1 class="mt-4 text-lg font-semibold text-slate-900">{{ title }}</h1>
-      <p class="mt-1 text-sm text-slate-500">This part of POS is coming soon.</p>
+      <p class="mt-1 text-sm text-slate-500">{{ subtitle }}</p>
     </div>
   `,
 })
 export class ComingSoon {
   private readonly route = inject(ActivatedRoute);
   protected readonly title = this.route.snapshot.data['title'] ?? 'Coming soon';
+  protected readonly subtitle = this.route.snapshot.data['subtitle'] ?? 'This part of the app is coming soon.';
 }

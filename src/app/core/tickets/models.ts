@@ -1,4 +1,39 @@
-export type TicketStatus = 'New' | 'Assigned' | 'InProgress' | 'Resolved' | 'Rejected' | 'Closed' | 'Revoked';
+export type TicketStatus = 'New' | 'Assigned' | 'InProgress' | 'Resolved' | 'Rejected' | 'Closed' | 'Revoked' | 'Sale';
+
+export type DealStatus = 'DeliveryDatePending' | 'Scheduled' | 'Completed';
+
+/** Present once a ticket's status is 'Sale' — see docs/modules/sales-deals.md. */
+export interface DealSummary {
+  id: string;
+  estimatedAmount: number;
+  deliveryDate: string | null;
+  status: DealStatus;
+}
+
+export interface Deal {
+  id: string;
+  ticketId: string;
+  ticketNumber: string;
+  ticketTitle: string;
+  estimatedAmount: number;
+  deliveryDate: string | null;
+  status: DealStatus;
+  createdByDisplayName: string;
+  createdAtUtc: string;
+  completedAtUtc: string | null;
+}
+
+export const DEAL_STATUS_LABELS: Record<DealStatus, string> = {
+  DeliveryDatePending: 'Delivery date pending',
+  Scheduled: 'Scheduled',
+  Completed: 'Completed',
+};
+
+export const DEAL_STATUS_BADGE_CLASSES: Record<DealStatus, string> = {
+  DeliveryDatePending: 'bg-amber-100 text-amber-700',
+  Scheduled: 'bg-sky-100 text-sky-700',
+  Completed: 'bg-green-100 text-green-700',
+};
 
 export interface CategoryDto {
   id: number;
@@ -35,6 +70,11 @@ export interface TicketDto {
   resolvedAtUtc: string | null;
   closedAtUtc: string | null;
   revokedAtUtc: string | null;
+  /** Set when a Sales Person filed this complaint during a call — see docs/modules/complaint-workflow-v2.md. */
+  sourceCallId: string | null;
+  deal: DealSummary | null;
+  /** Sum of each root message's latest Sale-outcome sub-complaint amount, or null if none. Omitted for a Party viewer unless the Admin has turned on TicketSettings.showSaleAmountToParty. */
+  totalSubComplaintSaleAmount: number | null;
 }
 
 export interface PagedResult<T> {
@@ -78,6 +118,23 @@ export interface TicketAttachmentDto {
   downloadUrl: string;
 }
 
+/** What a Developer/Admin reply attaches to a specific root message, treating it as its own "sub-complaint" — the same three actions a whole ticket has (status, reassignment, Sale conversion), just scoped to one message. */
+export type TicketMessageOutcomeStatus = 'InProgress' | 'Resolved' | 'Rejected' | 'Sale';
+
+export const TICKET_MESSAGE_OUTCOME_LABELS: Record<TicketMessageOutcomeStatus, string> = {
+  InProgress: 'In Progress',
+  Resolved: 'Resolved',
+  Rejected: 'Rejected',
+  Sale: 'Sale',
+};
+
+export const TICKET_MESSAGE_OUTCOME_BADGE_CLASSES: Record<TicketMessageOutcomeStatus, string> = {
+  InProgress: 'bg-purple-100 text-purple-700',
+  Resolved: 'bg-green-100 text-green-700',
+  Rejected: 'bg-red-100 text-red-700',
+  Sale: 'bg-fuchsia-100 text-fuchsia-700',
+};
+
 export interface TicketMessageDto {
   id: string;
   ticketId: string;
@@ -86,14 +143,34 @@ export interface TicketMessageDto {
   body: string;
   createdAtUtc: string;
   attachments: TicketAttachmentDto[];
+  /** Set when this message is a sub-complaint reply — the root message it targets. */
+  parentMessageId: string | null;
+  outcomeStatus: TicketMessageOutcomeStatus | null;
+  /** Omitted for a Party viewer unless the Admin has turned on TicketSettings.showSaleAmountToParty. Present only when outcomeStatus === 'Sale'. */
+  saleAmount: number | null;
+  reassignedToDeveloperId: string | null;
+  reassignedToDeveloperDisplayName: string | null;
 }
 
-/// No resolved/rejected counts — those are internal states folded into inProgressCount, matching the per-ticket status masking a Party receives.
+/** Posting a plain reply needs only body/files; replying to a specific message as its own sub-complaint additionally needs parentMessageId + outcomeStatus (Admin/assigned-Developer only). */
+export interface PostMessageOutcome {
+  parentMessageId: string;
+  outcomeStatus: TicketMessageOutcomeStatus;
+  saleAmount?: number | null;
+  reassignedToDeveloperId?: string | null;
+}
+
+export interface TicketSettings {
+  showSaleAmountToParty: boolean;
+}
+
+/// No resolved count — that's still an internal "awaiting Admin review" state folded into inProgressCount. Rejected is its own count now — a Party sees a rejection immediately, only Resolved stays masked as In Progress until an Admin formally closes it.
 export interface PartyDashboardStats {
   totalComplaints: number;
   newCount: number;
   assignedCount: number;
   inProgressCount: number;
+  rejectedCount: number;
   closedCount: number;
   revokedCount: number;
 }
@@ -120,6 +197,7 @@ export const TICKET_STATUS_LABELS: Record<TicketStatus, string> = {
   Rejected: 'Rejected',
   Closed: 'Closed',
   Revoked: 'Revoked',
+  Sale: 'Sale',
 };
 
 export const TICKET_STATUS_BADGE_CLASSES: Record<TicketStatus, string> = {
@@ -130,6 +208,7 @@ export const TICKET_STATUS_BADGE_CLASSES: Record<TicketStatus, string> = {
   Rejected: 'bg-red-100 text-red-700',
   Closed: 'bg-slate-200 text-slate-600',
   Revoked: 'bg-orange-100 text-orange-700',
+  Sale: 'bg-fuchsia-100 text-fuchsia-700',
 };
 
 export interface StatusOption {
@@ -148,9 +227,13 @@ export const HIGH_OR_URGENT_PRIORITY_VALUE = 'HighOrUrgent';
  * What the Admin status-pill dropdown offers, computed from the ticket's
  * current state — deliberately narrow (the backend enforces the same
  * restrictions independently, see TicketService.UpdateStatusAsAdminAsync):
- * InProgress/Resolved only ever come from a Developer's own action, and
- * Closed always goes through the dedicated "Close ticket" flow (so a
- * closing note can be collected) rather than this dropdown.
+ * InProgress always comes from a Developer's own action, Closed always goes
+ * through the dedicated "Close ticket" flow (so a closing note can be
+ * collected), and Sale always goes through the dedicated "Convert to Sale"
+ * flow (so an Estimated Amount can be collected) — none of those three ever
+ * appear here. Resolve/Reject ("Cancel" in the UI — see
+ * docs/modules/complaint-workflow-v2.md) are the two Admin can set directly
+ * from this dropdown.
  *
  * @param includeAssign Pass false where a dedicated Assign/Reassign button
  * already exists next to the dropdown (ticket-detail) to avoid offering the
@@ -161,7 +244,7 @@ export function adminStatusOptionsFor(ticket: Pick<TicketDto, 'status' | 'assign
   if (ticket.status === 'Closed') {
     return [{ value: ticket.assignedDeveloperId ? 'Assigned' : 'New', label: 'Reopen' }];
   }
-  if (ticket.status === 'Revoked') {
+  if (ticket.status === 'Revoked' || ticket.status === 'Sale') {
     return [];
   }
 
@@ -169,7 +252,8 @@ export function adminStatusOptionsFor(ticket: Pick<TicketDto, 'status' | 'assign
   if (includeAssign) {
     options.push({ value: 'Assigned', label: ticket.assignedDeveloperId ? 'Reassign' : 'Assign developer' });
   }
-  options.push({ value: 'Rejected', label: 'Reject' });
+  options.push({ value: 'Resolved', label: 'Resolve' });
+  options.push({ value: 'Rejected', label: 'Cancel' });
   return options;
 }
 

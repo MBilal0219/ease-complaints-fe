@@ -1,5 +1,5 @@
 import { Routes } from '@angular/router';
-import { ROLE_ADMIN, ROLE_DEVELOPER, ROLE_USER } from './core/auth/models';
+import { ROLE_ADMIN, ROLE_BRANCH_ADMIN, ROLE_DEVELOPER, ROLE_SALES_PERSON, ROLE_USER } from './core/auth/models';
 import { authGuard } from './core/guards/auth.guard';
 import { guestGuard } from './core/guards/guest.guard';
 import { roleGuard } from './core/guards/role.guard';
@@ -54,6 +54,15 @@ export const routes: Routes = [
       { path: 'parties/:id', data: { personRole: 'Party' }, loadComponent: () => import('./features/admin/person-detail/person-detail').then((m) => m.PersonDetailPage) },
       { path: 'developers', loadComponent: () => import('./features/admin/developers/developers').then((m) => m.DevelopersPage) },
       { path: 'developers/:id', data: { personRole: 'Developer' }, loadComponent: () => import('./features/admin/person-detail/person-detail').then((m) => m.PersonDetailPage) },
+      { path: 'sales-people', loadComponent: () => import('./features/admin/sales-people/sales-people').then((m) => m.SalesPeoplePage) },
+      { path: 'sales-people/:id', data: { personRole: 'SalesPerson' }, loadComponent: () => import('./features/admin/person-detail/person-detail').then((m) => m.PersonDetailPage) },
+      { path: 'companies', loadComponent: () => import('./features/admin/companies/companies').then((m) => m.CompaniesPage) },
+      { path: 'deals', loadComponent: () => import('./features/admin/deals/deals').then((m) => m.DealsPage) },
+      { path: 'calls', loadComponent: () => import('./features/sales-person/calls/calls').then((m) => m.CallsPage) },
+      { path: 'leads', loadComponent: () => import('./features/leads/leads-list/leads-list').then((m) => m.LeadsListPage) },
+      { path: 'leads/new', loadComponent: () => import('./features/leads/lead-form/lead-form').then((m) => m.LeadFormPage) },
+      { path: 'leads/:id', loadComponent: () => import('./features/leads/lead-detail/lead-detail').then((m) => m.LeadDetailPage) },
+      { path: 'settings', loadComponent: () => import('./features/admin/settings/settings').then((m) => m.AdminSettingsPage) },
       { path: 'sessions', loadComponent: () => import('./features/auth/sessions/sessions').then((m) => m.SessionsPage) },
       { path: 'profile', loadComponent: () => import('./features/profile/profile').then((m) => m.ProfilePage) },
     ],
@@ -78,6 +87,7 @@ export const routes: Routes = [
     children: [
       { path: '', pathMatch: 'full', redirectTo: 'dashboard' },
       { path: 'dashboard', loadComponent: () => import('./features/user/dashboard/dashboard').then((m) => m.PartyDashboardPage) },
+      { path: 'team', canActivate: [roleGuard(ROLE_BRANCH_ADMIN)], loadComponent: () => import('./features/user/team/team').then((m) => m.TeamPage) },
       { path: 'my-complaints', loadComponent: () => import('./features/user/my-complaints/my-complaints').then((m) => m.MyComplaintsPage) },
       { path: 'new-complaint', loadComponent: () => import('./features/user/new-complaint/new-complaint').then((m) => m.NewComplaintPage) },
       { path: 'tickets/:id', loadComponent: () => import('./features/tickets/ticket-detail/ticket-detail').then((m) => m.TicketDetailPage) },
@@ -94,6 +104,28 @@ export const routes: Routes = [
       { path: 'pos/tables', loadComponent: () => import('./features/user/pos-tables/pos-tables').then((m) => m.PosTablesPage) },
       { path: 'pos/billing', loadComponent: () => import('./features/user/pos-billing/pos-billing').then((m) => m.PosBillingPage) },
       { path: 'pos/settings', loadComponent: () => import('./features/user/pos-settings/pos-settings').then((m) => m.PosSettingsPage) },
+      { path: 'sessions', loadComponent: () => import('./features/auth/sessions/sessions').then((m) => m.SessionsPage) },
+      { path: 'profile', loadComponent: () => import('./features/profile/profile').then((m) => m.ProfilePage) },
+    ],
+  },
+  {
+    path: 'app/sales-person',
+    canActivate: [authGuard, roleGuard(ROLE_SALES_PERSON)],
+    loadComponent: () => import('./features/sales-person/sales-person-shell').then((m) => m.SalesPersonShell),
+    children: [
+      { path: '', pathMatch: 'full', redirectTo: 'dashboard' },
+      {
+        path: 'dashboard',
+        data: { title: 'Sales Person Dashboard' },
+        loadComponent: () => import('./features/sales-person/dashboard/dashboard').then((m) => m.SalesPersonDashboardPage),
+      },
+      { path: 'calls', loadComponent: () => import('./features/sales-person/calls/calls').then((m) => m.CallsPage) },
+      { path: 'calls/new', loadComponent: () => import('./features/sales-person/log-call/log-call').then((m) => m.LogCallPage) },
+      { path: 'calls/:id', loadComponent: () => import('./features/sales-person/call-detail/call-detail').then((m) => m.CallDetailPage) },
+      { path: 'leads', loadComponent: () => import('./features/leads/leads-list/leads-list').then((m) => m.LeadsListPage) },
+      { path: 'leads/new', loadComponent: () => import('./features/leads/lead-form/lead-form').then((m) => m.LeadFormPage) },
+      { path: 'leads/:id', loadComponent: () => import('./features/leads/lead-detail/lead-detail').then((m) => m.LeadDetailPage) },
+      { path: 'settings', loadComponent: () => import('./features/sales-person/settings/settings').then((m) => m.SalesPersonSettingsPage) },
       { path: 'sessions', loadComponent: () => import('./features/auth/sessions/sessions').then((m) => m.SessionsPage) },
       { path: 'profile', loadComponent: () => import('./features/profile/profile').then((m) => m.ProfilePage) },
     ],
