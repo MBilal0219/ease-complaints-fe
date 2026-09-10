@@ -3,6 +3,8 @@ export interface CurrentUser {
   email: string;
   displayName: string;
   roles: string[];
+  /** Double-submit CSRF token, echoed in the body for cross-origin frontends — see CsrfTokenReader. Present on login/refresh/me/impersonate responses. */
+  csrfToken?: string;
 }
 
 export interface AuthSessionSummary {

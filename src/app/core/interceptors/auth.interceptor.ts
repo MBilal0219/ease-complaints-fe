@@ -52,7 +52,16 @@ export const authInterceptor: HttpInterceptorFn = (req, next) => {
         const wasConsideredAuthenticated = authService.isAuthenticated();
 
         return authService.refresh().pipe(
-          switchMap(() => next(outgoing)),
+          switchMap(() => {
+            // refresh() rotates the CSRF token (new cookie + new in-memory
+            // value) — rebuild the header from the fresh value before retrying,
+            // or the retry itself 403s on a stale token.
+            if (!MUTATING_METHODS.has(req.method)) {
+              return next(outgoing);
+            }
+            const freshToken = csrf.read();
+            return next(freshToken ? outgoing.clone({ setHeaders: { 'X-XSRF-TOKEN': freshToken } }) : outgoing);
+          }),
           catchError((refreshError) => {
             authService.clearLocalState();
             if (wasConsideredAuthenticated) {

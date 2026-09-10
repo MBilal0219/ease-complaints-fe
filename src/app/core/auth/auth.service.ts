@@ -1,6 +1,7 @@
 import { HttpClient } from '@angular/common/http';
 import { computed, Injectable, inject, signal } from '@angular/core';
 import { Observable, catchError, finalize, map, of, share, tap } from 'rxjs';
+import { CsrfTokenReader } from './csrf';
 import { AuthSessionSummary, CurrentUser, InvitationValidation } from './models';
 
 const BASE = '/api/v1/auth';
@@ -13,6 +14,14 @@ const BASE = '/api/v1/auth';
 @Injectable({ providedIn: 'root' })
 export class AuthService {
   private readonly http = inject(HttpClient);
+  private readonly csrf = inject(CsrfTokenReader);
+
+  /** Store the user in state and hand the interceptor its CSRF token (needed cross-origin — see CsrfTokenReader). */
+  private applyUser(user: CurrentUser): void {
+    this.currentUserSignal.set(user);
+    this.loadedSignal.set(true);
+    this.csrf.setToken(user.csrfToken);
+  }
 
   private readonly currentUserSignal = signal<CurrentUser | null>(null);
   private readonly loadedSignal = signal(false);
@@ -30,10 +39,7 @@ export class AuthService {
     }
     if (!this.loadInFlight) {
       this.loadInFlight = this.http.get<CurrentUser>(`${BASE}/me`).pipe(
-        tap((user) => {
-          this.currentUserSignal.set(user);
-          this.loadedSignal.set(true);
-        }),
+        tap((user) => this.applyUser(user)),
         catchError(() => {
           this.currentUserSignal.set(null);
           this.loadedSignal.set(true);
@@ -46,10 +52,7 @@ export class AuthService {
 
   login(email: string, password: string): Observable<CurrentUser> {
     return this.http.post<CurrentUser>(`${BASE}/login`, { email, password }).pipe(
-      tap((user) => {
-        this.currentUserSignal.set(user);
-        this.loadedSignal.set(true);
-      }),
+      tap((user) => this.applyUser(user)),
     );
   }
 
@@ -57,10 +60,7 @@ export class AuthService {
   refresh(): Observable<CurrentUser> {
     if (!this.refreshInFlight) {
       this.refreshInFlight = this.http.post<CurrentUser>(`${BASE}/refresh`, {}).pipe(
-        tap((user) => {
-          this.currentUserSignal.set(user);
-          this.loadedSignal.set(true);
-        }),
+        tap((user) => this.applyUser(user)),
         finalize(() => (this.refreshInFlight = null)),
         share(),
       );
@@ -121,7 +121,7 @@ export class AuthService {
    */
   checkSessionStillValid(): Observable<boolean> {
     return this.http.get<CurrentUser>(`${BASE}/me`).pipe(
-      tap((user) => this.currentUserSignal.set(user)),
+      tap((user) => this.applyUser(user)),
       map(() => true),
       catchError(() => {
         this.clearLocalState();
@@ -134,5 +134,6 @@ export class AuthService {
   clearLocalState(): void {
     this.currentUserSignal.set(null);
     this.loadedSignal.set(true);
+    this.csrf.clear();
   }
 }
