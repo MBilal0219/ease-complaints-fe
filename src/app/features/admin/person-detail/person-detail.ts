@@ -7,6 +7,7 @@ import { ActivatedRoute, Router, RouterLink } from '@angular/router';
 import { Subject, catchError, merge, of, switchMap, timer } from 'rxjs';
 import { AdminService } from '../../../core/admin/admin.service';
 import { PersonDetail } from '../../../core/admin/models';
+import { resolveAdminBase } from '../../../core/admin/route-base';
 import { LeadsService } from '../../../core/leads/leads.service';
 import { LEAD_CATEGORY_BADGE_CLASSES, LEAD_CATEGORY_LABELS, LEAD_STATUS_BADGE_CLASSES, LEAD_STATUS_LABELS, LeadCategory, LeadSummary } from '../../../core/leads/models';
 import { TicketsService } from '../../../core/tickets/tickets.service';
@@ -77,7 +78,7 @@ function isoDate(date: Date): string {
         </div>
 
         <div class="flex flex-wrap gap-2">
-          @if (role === 'Party') {
+          @if (role === 'Party' && isAdmin) {
             <button
               type="button"
               (click)="showImpersonateConfirm.set(true)"
@@ -298,7 +299,7 @@ function isoDate(date: Date): string {
               </thead>
               <tbody class="divide-y divide-slate-100">
                 @for (ticket of ticketsResult().items; track ticket.id) {
-                  <tr class="cursor-pointer hover:bg-slate-50" [routerLink]="['/app/admin/tickets', ticket.id]">
+                  <tr class="cursor-pointer hover:bg-slate-50" [routerLink]="[base, 'tickets', ticket.id]">
                     <td class="px-4 py-2.5 font-mono text-xs text-slate-500">{{ ticket.ticketNumber }}</td>
                     <td class="px-4 py-2.5 font-medium text-slate-900">{{ ticket.title }}</td>
                     <td class="px-4 py-2.5">
@@ -401,7 +402,7 @@ function isoDate(date: Date): string {
               </thead>
               <tbody class="divide-y divide-slate-100">
                 @for (lead of leadsResult().items; track lead.id) {
-                  <tr class="cursor-pointer hover:bg-slate-50" [routerLink]="['/app/admin/leads', lead.id]">
+                  <tr class="cursor-pointer hover:bg-slate-50" [routerLink]="[base, 'leads', lead.id]">
                     <td class="px-4 py-2.5 font-medium text-slate-900">{{ lead.name }}</td>
                     <td class="px-4 py-2.5 text-slate-600">{{ lead.businessName ?? '—' }}</td>
                     <td class="px-4 py-2.5">
@@ -592,12 +593,17 @@ export class PersonDetailPage implements OnInit {
   private readonly destroyRef = inject(DestroyRef);
 
   protected readonly role: PersonRole = this.route.snapshot.data['personRole'];
-  protected readonly backLink = {
-    Party: '/app/admin/parties',
-    Developer: '/app/admin/developers',
-    SalesPerson: '/app/admin/sales-people',
-    Implementator: '/app/admin/implementators',
-  }[this.role];
+  /** `/app/admin` or `/app/implementator` — this page is reached from both shells. */
+  protected readonly base = resolveAdminBase(this.route);
+  protected readonly isAdmin = this.base === '/app/admin';
+  protected readonly backLink = `${this.base}/${
+    {
+      Party: 'parties',
+      Developer: 'developers',
+      SalesPerson: 'sales-people',
+      Implementator: 'implementators',
+    }[this.role]
+  }`;
   protected readonly personId = this.route.snapshot.paramMap.get('id')!;
 
   /** SalesPerson and Implementator have no ticket relationship yet — see AdminService.GetSalesPeopleAsync's own comment (Implementator: RoleNames.Implementator's doc comment, account management only for now). */

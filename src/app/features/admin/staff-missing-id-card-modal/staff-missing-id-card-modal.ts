@@ -43,7 +43,9 @@ const GROUPS: { role: string; label: string; route: string }[] = [
                           @if (row.rankName) { · {{ row.rankName }} }
                         </p>
                       </div>
-                      <a [routerLink]="['/app/admin', group.route, row.id]" (click)="dismiss()" class="shrink-0 text-xs font-medium text-indigo-600 hover:text-indigo-500">View profile</a>
+                      @if (linkBase()) {
+                        <a [routerLink]="[linkBase(), group.route, row.id]" (click)="dismiss()" class="shrink-0 text-xs font-medium text-indigo-600 hover:text-indigo-500">View profile</a>
+                      }
                     </li>
                   }
                 </ul>
@@ -57,6 +59,8 @@ const GROUPS: { role: string; label: string; route: string }[] = [
 })
 export class StaffMissingIdCardModal {
   readonly open = input.required<boolean>();
+  /** Route prefix for the "View profile" links, or null to hide them (e.g. the Implementator dashboard, which has no staff detail pages). */
+  readonly linkBase = input<string | null>('/app/admin');
   readonly closed = output<void>();
 
   private readonly adminService = inject(AdminService);

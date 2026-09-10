@@ -28,7 +28,7 @@ import { Modal } from '../../../shared/ui/modal/modal';
         <div class="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2">
           @for (row of rows(); track row.developerId) {
             <a
-              [routerLink]="['/app/admin/developers', row.developerId]"
+              [routerLink]="detailBase() ? [detailBase(), row.developerId] : null"
               (click)="dismiss()"
               class="block rounded-lg border border-slate-200 bg-white p-4 hover:border-slate-300 hover:shadow-md"
             >
@@ -59,6 +59,8 @@ export class DeveloperWorkloadModal {
   /** Last-30-days by default — see AdminDashboardPage. */
   readonly dateFrom = input<string | undefined>(undefined);
   readonly dateTo = input<string | undefined>(undefined);
+  /** Route prefix for the per-developer click-through, or null to render the cards as non-links (e.g. from the Implementator dashboard, which has no developer detail page). */
+  readonly detailBase = input<string | null>('/app/admin/developers');
   readonly closed = output<void>();
 
   private readonly adminService = inject(AdminService);

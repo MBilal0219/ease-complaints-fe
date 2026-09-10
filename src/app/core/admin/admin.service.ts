@@ -5,7 +5,11 @@ import { environment } from '../../../environments/environment';
 import { CallSummary, CustomerDirectoryEntry, PaymentFollowUpCustomer, PaymentFollowUpSummary } from '../sales-person/models';
 import { CallFilter } from '../sales-person/sales-person.service';
 import {
+  AddCompanyUserRequest,
   BranchOption,
+  CompanyDetail,
+  CompanyListItem,
+  CompanyUser,
   CreateBranchRequest,
   CreateCompanyRequest,
   CreateDeveloperRequest,
@@ -148,6 +152,30 @@ export class AdminService {
   /** Adds a Branch to an already-existing Company — customer or internal alike. */
   addBranch(companyId: string, request: CreateBranchRequest): Observable<BranchOption> {
     return this.http.post<BranchOption>(`${BASE}/companies/${companyId}/branches`, request);
+  }
+
+  getCompanies(dateFrom?: string, dateTo?: string, search?: string): Observable<CompanyListItem[]> {
+    let params = new HttpParams();
+    if (dateFrom) params = params.set('dateFrom', dateFrom);
+    if (dateTo) params = params.set('dateTo', dateTo);
+    if (search) params = params.set('search', search);
+    return this.http.get<CompanyListItem[]>(`${BASE}/companies`, { params });
+  }
+
+  getCompaniesForReport(dateFrom?: string, dateTo?: string, search?: string): Observable<CompanyListItem[]> {
+    let params = new HttpParams();
+    if (dateFrom) params = params.set('dateFrom', dateFrom);
+    if (dateTo) params = params.set('dateTo', dateTo);
+    if (search) params = params.set('search', search);
+    return this.http.get<CompanyListItem[]>(`${BASE}/companies/all`, { params });
+  }
+
+  getCompanyDetail(id: string): Observable<CompanyDetail> {
+    return this.http.get<CompanyDetail>(`${BASE}/companies/${id}`);
+  }
+
+  addCompanyUser(companyId: string, request: AddCompanyUserRequest): Observable<CompanyUser> {
+    return this.http.post<CompanyUser>(`${BASE}/companies/${companyId}/users`, request);
   }
 
   setUserActive(id: string, isActive: boolean): Observable<void> {

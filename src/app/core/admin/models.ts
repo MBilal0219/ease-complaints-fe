@@ -20,6 +20,8 @@ export interface DashboardStats {
   complaintsFromCalls: number;
   /** Developer/SalesPerson/Implementator accounts without a complete ID card (number + front + back). */
   missingIdCardCount: number;
+  /** Customer companies (excludes the internal one). */
+  totalCompanies: number;
 }
 
 /** One developer's workload card on the Admin Dashboard's Developers drill-down. */
@@ -152,12 +154,57 @@ export interface BranchOption {
 /** Creates a brand-new Company + its first Branch, no owning User. See company-management.md. */
 export interface CreateCompanyRequest {
   companyName: string;
-  branchName: string;
+  /** Defaults to "Head Office" server-side when omitted. */
+  branchName?: string;
 }
 
 /** Adds a Branch to an already-existing Company — customer or internal alike. */
 export interface CreateBranchRequest {
   branchName: string;
+}
+
+/** One row of the Companies management list. */
+export interface CompanyListItem {
+  id: string;
+  name: string;
+  isInternal: boolean;
+  branchCount: number;
+  userCount: number;
+  createdAtUtc: string;
+}
+
+export interface CompanyBranch {
+  id: string;
+  name: string;
+  ownerUserId: string | null;
+}
+
+export interface CompanyUser {
+  id: string;
+  displayName: string;
+  email: string;
+  role: string;
+  branchName: string;
+  isActive: boolean;
+  createdAtUtc: string;
+}
+
+export interface CompanyDetail {
+  id: string;
+  name: string;
+  isInternal: boolean;
+  createdAtUtc: string;
+  branches: CompanyBranch[];
+  users: CompanyUser[];
+}
+
+export interface AddCompanyUserRequest {
+  displayName: string;
+  email: string;
+  branchId: string;
+  location?: string;
+  phoneNumber?: string;
+  password: string;
 }
 
 export interface PersonDetail {

@@ -6,7 +6,8 @@ import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { Subject, catchError, merge, of, switchMap, timer } from 'rxjs';
 import { AdminService } from '../../../core/admin/admin.service';
 import { PagedResult, PersonSummary } from '../../../core/admin/models';
-import { RouterLink } from '@angular/router';
+import { resolveAdminBase } from '../../../core/admin/route-base';
+import { ActivatedRoute, RouterLink } from '@angular/router';
 import { PartyFormModal } from '../party-form-modal/party-form-modal';
 import { PendingInvitations } from '../pending-invitations/pending-invitations';
 import { Pagination } from '../../../shared/ui/pagination/pagination';
@@ -71,7 +72,7 @@ const POLL_MS = 8_000;
             </thead>
             <tbody class="divide-y divide-slate-100">
               @for (party of result().items; track party.id) {
-                <tr class="cursor-pointer hover:bg-slate-50" [routerLink]="['/app/admin/parties', party.id]">
+                <tr class="cursor-pointer hover:bg-slate-50" [routerLink]="[base, 'parties', party.id]">
                   <td class="px-4 py-2.5 font-medium text-slate-900">{{ party.displayName }}</td>
                   <td class="px-4 py-2.5 text-slate-600">{{ party.email }}</td>
                   <td class="px-4 py-2.5">
@@ -117,6 +118,9 @@ export class PartiesPage implements OnInit {
 
   private readonly adminService = inject(AdminService);
   private readonly destroyRef = inject(DestroyRef);
+
+  /** `/app/admin` or `/app/implementator` — this page is shared by both shells. */
+  protected readonly base = resolveAdminBase(inject(ActivatedRoute));
 
   protected search = '';
   protected readonly page = signal(1);
