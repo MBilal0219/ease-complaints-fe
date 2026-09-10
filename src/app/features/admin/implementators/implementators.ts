@@ -7,7 +7,7 @@ import { Subject, catchError, merge, of, switchMap, timer } from 'rxjs';
 import { AdminService } from '../../../core/admin/admin.service';
 import { PagedResult, PersonSummary } from '../../../core/admin/models';
 import { Pagination } from '../../../shared/ui/pagination/pagination';
-import { ImplementatorFormModal } from '../implementator-form-modal/implementator-form-modal';
+import { StaffFormModal } from '../staff-form-modal/staff-form-modal';
 
 const PAGE_SIZE = 10;
 const POLL_MS = 8_000;
@@ -15,7 +15,7 @@ const POLL_MS = 8_000;
 /** Account management only for now — see backend RoleNames.Implementator's own doc comment. Otherwise an exact copy of SalesPeoplePage. */
 @Component({
   selector: 'app-implementators',
-  imports: [DatePipe, FormsModule, RouterLink, ImplementatorFormModal, Pagination],
+  imports: [DatePipe, FormsModule, RouterLink, StaffFormModal, Pagination],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     <div class="flex flex-wrap items-center justify-between gap-3">
@@ -100,7 +100,7 @@ const POLL_MS = 8_000;
       }
     </div>
 
-    <app-implementator-form-modal [open]="showAddModal()" (closed)="showAddModal.set(false)" (created)="onCreated()" />
+    <app-staff-form-modal role="Implementator" mode="create" [open]="showAddModal()" (closed)="showAddModal.set(false)" (saved)="onCreated()" />
   `,
 })
 export class ImplementatorsPage implements OnInit {

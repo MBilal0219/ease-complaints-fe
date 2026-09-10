@@ -21,7 +21,11 @@ import {
   priorityBadgeClasses,
 } from '../../../core/tickets/models';
 import { ConfirmDialog } from '../../../shared/ui/confirm-dialog/confirm-dialog';
+import { Modal } from '../../../shared/ui/modal/modal';
 import { Pagination } from '../../../shared/ui/pagination/pagination';
+import { PasswordInput } from '../../../shared/ui/password-input/password-input';
+import { StaffFormModal } from '../staff-form-modal/staff-form-modal';
+import { StaffRole } from '../../../core/admin/admin.service';
 
 type PersonRole = 'Party' | 'Developer' | 'SalesPerson' | 'Implementator';
 
@@ -50,7 +54,7 @@ function isoDate(date: Date): string {
 /** Admin's profile view of one Party or Developer — which one is set by the route (`data.personRole`). */
 @Component({
   selector: 'app-person-detail',
-  imports: [DatePipe, FormsModule, RouterLink, Pagination, ConfirmDialog],
+  imports: [DatePipe, FormsModule, RouterLink, Pagination, ConfirmDialog, Modal, PasswordInput, StaffFormModal],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     @if (notFound()) {
@@ -80,6 +84,22 @@ function isoDate(date: Date): string {
               class="rounded-md border border-indigo-300 bg-white px-3 py-1.5 text-sm font-medium text-indigo-600 hover:bg-indigo-50"
             >
               Log in as this party
+            </button>
+          }
+          @if (isStaff) {
+            <button
+              type="button"
+              (click)="showEditModal.set(true)"
+              class="rounded-md border border-slate-300 bg-white px-3 py-1.5 text-sm font-medium text-slate-700 hover:bg-slate-50"
+            >
+              Edit
+            </button>
+            <button
+              type="button"
+              (click)="newPassword.set(''); showPasswordModal.set(true)"
+              class="rounded-md border border-slate-300 bg-white px-3 py-1.5 text-sm font-medium text-slate-700 hover:bg-slate-50"
+            >
+              Reset password
             </button>
           }
           <button
@@ -135,6 +155,65 @@ function isoDate(date: Date): string {
               <dd class="font-medium text-slate-700">{{ p.phoneNumber ?? '—' }}</dd>
             </div>
           </dl>
+        </div>
+      }
+
+      @if (isStaff && p.employeeProfile; as ep) {
+        <div class="mt-4 rounded-lg border border-slate-200 bg-white p-4 text-sm">
+          <h2 class="text-sm font-semibold text-slate-900">Employee profile</h2>
+
+          @if (!ep.idCardComplete) {
+            <p class="mt-2 rounded-md bg-amber-50 px-3 py-2 text-xs text-amber-800">
+              ID card incomplete — missing{{ missingIdCardParts(ep) }}.
+            </p>
+          }
+
+          <dl class="mt-3 grid grid-cols-1 gap-2.5 sm:grid-cols-4">
+            <div>
+              <dt class="text-slate-500">Branch</dt>
+              <dd class="font-medium text-slate-700">{{ p.branch ?? '—' }}</dd>
+            </div>
+            <div>
+              <dt class="text-slate-500">Gender</dt>
+              <dd class="font-medium text-slate-700">{{ ep.gender === 'Unspecified' ? '—' : ep.gender }}</dd>
+            </div>
+            @if (role === 'Developer') {
+              <div>
+                <dt class="text-slate-500">Developer type</dt>
+                <dd class="font-medium text-slate-700">{{ ep.developerTypeName ?? '—' }}</dd>
+              </div>
+            }
+            <div>
+              <dt class="text-slate-500">Rank</dt>
+              <dd class="font-medium text-slate-700">{{ ep.rankName ?? '—' }}</dd>
+            </div>
+            <div>
+              <dt class="text-slate-500">ID card number</dt>
+              <dd class="font-medium text-slate-700">{{ ep.idCardNumber ?? '—' }}</dd>
+            </div>
+          </dl>
+
+          <div class="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-2">
+            @for (side of idCardSides; track side) {
+              <div class="rounded-md border border-slate-200 p-3">
+                <p class="text-xs font-medium text-slate-500">ID card — {{ side }}</p>
+                @if (side === 'front' ? ep.hasIdCardFront : ep.hasIdCardBack) {
+                  <a [href]="idCardUrl(side)" target="_blank" rel="noopener" class="mt-2 inline-block text-sm font-medium text-indigo-600 hover:text-indigo-500">View / download</a>
+                } @else {
+                  <p class="mt-2 text-sm text-amber-700">Not uploaded yet</p>
+                }
+                <div class="mt-2 flex items-center gap-2">
+                  <input type="file" accept="image/*,application/pdf" (change)="uploadIdCard(side, $event)" class="text-xs" />
+                  @if (side === 'front' ? ep.hasIdCardFront : ep.hasIdCardBack) {
+                    <button type="button" (click)="removeIdCard(side)" class="text-xs font-medium text-red-600 hover:text-red-500">Remove</button>
+                  }
+                </div>
+              </div>
+            }
+          </div>
+          @if (idCardError()) {
+            <p class="mt-2 text-sm text-red-600" role="alert">{{ idCardError() }}</p>
+          }
         </div>
       }
 
@@ -453,6 +532,40 @@ function isoDate(date: Date): string {
         (confirm)="impersonate()"
         (cancel)="showImpersonateConfirm.set(false)"
       />
+
+      @if (isStaff) {
+        <app-staff-form-modal
+          [role]="staffRole"
+          mode="edit"
+          [personId]="personId"
+          [open]="showEditModal()"
+          (closed)="showEditModal.set(false)"
+          (saved)="onStaffSaved()"
+        />
+
+        <app-modal [open]="showPasswordModal()" (close)="showPasswordModal.set(false)">
+          <h2 class="text-base font-semibold text-slate-900">Reset password</h2>
+          <p class="mt-1 text-sm text-slate-500">Sets a new password immediately and signs {{ p.displayName }} out of every device.</p>
+          <div class="mt-4">
+            <label for="pd-newpass" class="block text-sm font-medium text-slate-700">New password</label>
+            <app-password-input inputId="pd-newpass" autocomplete="new-password" [ngModel]="newPassword()" (ngModelChange)="newPassword.set($event)" />
+          </div>
+          @if (idCardError()) {
+            <p class="mt-2 text-sm text-red-600" role="alert">{{ idCardError() }}</p>
+          }
+          <div class="mt-5 flex justify-end gap-3">
+            <button type="button" (click)="showPasswordModal.set(false)" class="rounded-md border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50">Cancel</button>
+            <button
+              type="button"
+              (click)="submitPasswordReset()"
+              [disabled]="newPassword().length < 8 || actionPending()"
+              class="rounded-md bg-indigo-600 px-4 py-2 text-sm font-medium text-white hover:bg-indigo-500 disabled:opacity-50"
+            >
+              {{ actionPending() ? 'Saving…' : 'Set password' }}
+            </button>
+          </div>
+        </app-modal>
+      }
     } @else {
       <p class="text-sm text-slate-500" role="status">Loading…</p>
     }
@@ -485,10 +598,14 @@ export class PersonDetailPage implements OnInit {
     SalesPerson: '/app/admin/sales-people',
     Implementator: '/app/admin/implementators',
   }[this.role];
-  private readonly personId = this.route.snapshot.paramMap.get('id')!;
+  protected readonly personId = this.route.snapshot.paramMap.get('id')!;
 
   /** SalesPerson and Implementator have no ticket relationship yet — see AdminService.GetSalesPeopleAsync's own comment (Implementator: RoleNames.Implementator's doc comment, account management only for now). */
   protected readonly hasTicketRelationship = this.role !== 'SalesPerson' && this.role !== 'Implementator';
+
+  protected readonly isStaff = this.role !== 'Party';
+  protected readonly staffRole = this.role as StaffRole;
+  protected readonly idCardSides: ('front' | 'back')[] = ['front', 'back'];
 
   protected readonly person = signal<PersonDetail | null>(null);
   protected readonly notFound = signal<string | null>(null);
@@ -496,6 +613,10 @@ export class PersonDetailPage implements OnInit {
   protected readonly actionError = signal<string | null>(null);
   protected readonly showToggleActiveConfirm = signal(false);
   protected readonly showImpersonateConfirm = signal(false);
+  protected readonly showEditModal = signal(false);
+  protected readonly showPasswordModal = signal(false);
+  protected readonly newPassword = signal('');
+  protected readonly idCardError = signal<string | null>(null);
 
   protected search = '';
   /** A single TicketStatus for Party (existing behavior), or a comma-joined Incomplete/Complete status set for Developer — see DEVELOPER_STATUS_FILTERS. */
@@ -592,6 +713,63 @@ export class PersonDetailPage implements OnInit {
     request$.subscribe({
       next: (person) => this.person.set(person),
       error: () => this.notFound.set(`This ${this.role.toLowerCase()} could not be found.`),
+    });
+  }
+
+  // ---- Staff edit / password / ID card ----
+
+  protected onStaffSaved(): void {
+    this.showEditModal.set(false);
+    this.loadPerson();
+  }
+
+  protected submitPasswordReset(): void {
+    if (this.newPassword().length < 8 || this.actionPending()) return;
+    this.actionPending.set(true);
+    this.idCardError.set(null);
+    this.adminService.setStaffPassword(this.personId, this.newPassword()).subscribe({
+      next: () => {
+        this.actionPending.set(false);
+        this.showPasswordModal.set(false);
+      },
+      error: (error: HttpErrorResponse) => {
+        this.actionPending.set(false);
+        this.idCardError.set(error.error?.error ?? 'Could not reset the password.');
+      },
+    });
+  }
+
+  protected idCardUrl(side: 'front' | 'back'): string {
+    return this.adminService.idCardDownloadUrl(this.personId, side);
+  }
+
+  protected missingIdCardParts(ep: { idCardNumber: string | null; hasIdCardFront: boolean; hasIdCardBack: boolean }): string {
+    const parts: string[] = [];
+    if (!ep.idCardNumber) parts.push('number');
+    if (!ep.hasIdCardFront) parts.push('front scan');
+    if (!ep.hasIdCardBack) parts.push('back scan');
+    return ' ' + parts.join(', ');
+  }
+
+  protected uploadIdCard(side: 'front' | 'back', event: Event): void {
+    const input = event.target as HTMLInputElement;
+    const file = input.files?.[0];
+    if (!file) return;
+    this.idCardError.set(null);
+    this.adminService.uploadIdCard(this.personId, side, file).subscribe({
+      next: () => {
+        input.value = '';
+        this.loadPerson();
+      },
+      error: (error: HttpErrorResponse) => this.idCardError.set(error.error?.error ?? 'Could not upload that file.'),
+    });
+  }
+
+  protected removeIdCard(side: 'front' | 'back'): void {
+    this.idCardError.set(null);
+    this.adminService.removeIdCard(this.personId, side).subscribe({
+      next: () => this.loadPerson(),
+      error: (error: HttpErrorResponse) => this.idCardError.set(error.error?.error ?? 'Could not remove that file.'),
     });
   }
 

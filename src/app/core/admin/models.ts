@@ -18,6 +18,8 @@ export interface DashboardStats {
   totalCalls: number;
   totalReferrals: number;
   complaintsFromCalls: number;
+  /** Developer/SalesPerson/Implementator accounts without a complete ID card (number + front + back). */
+  missingIdCardCount: number;
 }
 
 /** One developer's workload card on the Admin Dashboard's Developers drill-down. */
@@ -52,6 +54,55 @@ export interface PersonSummary {
   /** Every user belongs to exactly one Company/Branch — see ADR-005. displayName is the *person's* name, not the company's. */
   companyName: string;
   branchName: string;
+  /** Internal-staff only — false for a Party or for staff still missing a number / front / back. */
+  idCardComplete: boolean;
+}
+
+/** Gender / DeveloperType / Rank / ID-card-number — shared by the create and edit forms. All optional. */
+export interface EmployeeProfileFields {
+  gender?: string;
+  developerTypeId?: number | null;
+  rankId?: number | null;
+  idCardNumber?: string | null;
+}
+
+export interface UpdateStaffRequest {
+  displayName: string;
+  email: string;
+  branchId?: string;
+  profile: EmployeeProfileFields;
+}
+
+export interface SetStaffPasswordRequest {
+  newPassword: string;
+}
+
+export interface LookupValue {
+  id: number;
+  name: string;
+}
+
+/** One row in the dashboard "Missing ID Card" popup. */
+export interface StaffMissingIdCardRow {
+  id: string;
+  displayName: string;
+  role: string;
+  developerTypeName?: string | null;
+  rankName?: string | null;
+  branchName: string;
+}
+
+/** The employee-profile block on PersonDetail. */
+export interface EmployeeProfileDetail {
+  gender: string;
+  developerTypeId: number | null;
+  developerTypeName: string | null;
+  rankId: number | null;
+  rankName: string | null;
+  idCardNumber: string | null;
+  hasIdCardFront: boolean;
+  hasIdCardBack: boolean;
+  idCardComplete: boolean;
 }
 
 export interface PagedResult<T> {
@@ -74,30 +125,18 @@ export interface CreatePartyRequest {
   branchId?: string;
 }
 
-export interface CreateDeveloperRequest {
+export interface CreateStaffRequest {
   displayName: string;
   email: string;
   password: string;
-  /** Optional — an existing Branch of the internal Company, from the Company/Branch picker. Defaults to the one internal Branch when omitted. */
+  /** An existing Branch of the internal Company, from the Company/Branch picker. The form requires it; the backend defaults to the one internal Branch when omitted. */
   branchId?: string;
+  profile: EmployeeProfileFields;
 }
 
-export interface CreateSalesPersonRequest {
-  displayName: string;
-  email: string;
-  password: string;
-  /** See CreateDeveloperRequest.branchId. */
-  branchId?: string;
-}
-
-/** Account management only for now — see backend RoleNames.Implementator's own doc comment. */
-export interface CreateImplementatorRequest {
-  displayName: string;
-  email: string;
-  password: string;
-  /** See CreateDeveloperRequest.branchId. */
-  branchId?: string;
-}
+export type CreateDeveloperRequest = CreateStaffRequest;
+export type CreateSalesPersonRequest = CreateStaffRequest;
+export type CreateImplementatorRequest = CreateStaffRequest;
 
 /** One row of the Admin "add user" Company/Branch picker and the standalone Companies page — see sales-person-role.md and company-management.md. */
 export interface BranchOption {
@@ -134,4 +173,6 @@ export interface PersonDetail {
   phoneNumber: string | null;
   openTicketCount: number;
   totalTicketCount: number;
+  /** Internal-staff (Developer/SalesPerson/Implementator) employee profile — null for a Party. */
+  employeeProfile: EmployeeProfileDetail | null;
 }

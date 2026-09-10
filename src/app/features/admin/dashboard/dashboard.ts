@@ -11,6 +11,7 @@ import { PENDING_STATUS_QUERY_VALUE } from '../../../core/tickets/models';
 import { AdminPaymentModal } from '../admin-payment-modal/admin-payment-modal';
 import { DeveloperWorkloadModal } from '../developer-workload-modal/developer-workload-modal';
 import { SalesWorkloadModal } from '../sales-workload-modal/sales-workload-modal';
+import { StaffMissingIdCardModal } from '../staff-missing-id-card-modal/staff-missing-id-card-modal';
 
 interface StatCard {
   label: string;
@@ -63,7 +64,7 @@ function thirtyDaysAgo(): string {
 
 @Component({
   selector: 'app-admin-dashboard',
-  imports: [DecimalPipe, RouterLink, DeveloperWorkloadModal, SalesWorkloadModal, AdminPaymentModal],
+  imports: [DecimalPipe, RouterLink, DeveloperWorkloadModal, SalesWorkloadModal, AdminPaymentModal, StaffMissingIdCardModal],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     <h1 class="text-lg font-semibold text-slate-900">Dashboard</h1>
@@ -138,6 +139,16 @@ function thirtyDaysAgo(): string {
         <p class="mt-2 inline-flex rounded-md bg-emerald-50 px-2 py-1 text-2xl font-semibold text-emerald-700">{{ (paymentSummary()?.paidAmount ?? 0) | number: '1.0-2' }}</p>
         <p class="mt-2 text-sm text-slate-600">Collected so far</p>
       </div>
+
+      <button
+        type="button"
+        (click)="showMissingIdCard.set(true)"
+        class="block rounded-lg border border-amber-200 bg-white p-4 text-left transition-shadow hover:shadow-md"
+      >
+        <p class="text-xs font-medium text-slate-500">Missing ID Card</p>
+        <p class="mt-2 inline-flex rounded-md bg-amber-50 px-2 py-1 text-2xl font-semibold text-amber-700">{{ stats()?.missingIdCardCount ?? 0 }}</p>
+        <p class="mt-2 text-sm text-slate-600">Staff without a complete ID card</p>
+      </button>
     </div>
 
     <h2 class="mt-8 text-xs font-semibold uppercase tracking-wide text-slate-500">Everything else</h2>
@@ -173,6 +184,7 @@ function thirtyDaysAgo(): string {
     <app-sales-workload-modal [open]="showSales()" [dateFrom]="rangeFrom" [dateTo]="rangeTo" (closed)="showSales.set(false)" />
     <app-admin-payment-modal [open]="showOverduePayments()" kind="overdue" (closed)="showOverduePayments.set(false)" />
     <app-admin-payment-modal [open]="showUpcomingPayments()" kind="upcoming" (closed)="showUpcomingPayments.set(false)" />
+    <app-staff-missing-id-card-modal [open]="showMissingIdCard()" (closed)="showMissingIdCard.set(false)" />
   `,
 })
 export class DashboardPage implements OnInit {
@@ -192,6 +204,7 @@ export class DashboardPage implements OnInit {
   protected readonly showSales = signal(false);
   protected readonly showOverduePayments = signal(false);
   protected readonly showUpcomingPayments = signal(false);
+  protected readonly showMissingIdCard = signal(false);
 
   private readonly developerWorkload = signal<DeveloperWorkload[]>([]);
   private readonly salesWorkload = signal<SalesPersonWorkload[]>([]);

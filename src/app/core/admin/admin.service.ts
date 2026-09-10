@@ -1,6 +1,7 @@
 import { HttpClient, HttpParams } from '@angular/common/http';
 import { Injectable, inject } from '@angular/core';
 import { Observable } from 'rxjs';
+import { environment } from '../../../environments/environment';
 import { CallSummary, CustomerDirectoryEntry, PaymentFollowUpCustomer, PaymentFollowUpSummary } from '../sales-person/models';
 import { CallFilter } from '../sales-person/sales-person.service';
 import {
@@ -13,13 +14,25 @@ import {
   CreateSalesPersonRequest,
   DashboardStats,
   DeveloperWorkload,
+  EmployeeProfileDetail,
+  LookupValue,
   PagedResult,
   PersonDetail,
   PersonSummary,
   SalesPersonWorkload,
+  StaffMissingIdCardRow,
+  UpdateStaffRequest,
 } from './models';
 
 const BASE = '/api/v1/admin';
+
+/** The three internal-staff roles, matched to their list/detail/update route segment. */
+export type StaffRole = 'Developer' | 'SalesPerson' | 'Implementator';
+const STAFF_ROUTE: Record<StaffRole, string> = {
+  Developer: 'developers',
+  SalesPerson: 'sales-people',
+  Implementator: 'implementators',
+};
 
 @Injectable({ providedIn: 'root' })
 export class AdminService {
@@ -139,6 +152,53 @@ export class AdminService {
 
   setUserActive(id: string, isActive: boolean): Observable<void> {
     return this.http.patch<void>(`${BASE}/users/${id}/status`, { isActive });
+  }
+
+  // ---- Staff edit / password / ID card ----
+
+  updateStaff(role: StaffRole, id: string, request: UpdateStaffRequest): Observable<PersonSummary> {
+    return this.http.put<PersonSummary>(`${BASE}/${STAFF_ROUTE[role]}/${id}`, request);
+  }
+
+  setStaffPassword(id: string, newPassword: string): Observable<void> {
+    return this.http.put<void>(`${BASE}/staff/${id}/password`, { newPassword });
+  }
+
+  uploadIdCard(id: string, side: 'front' | 'back', file: File): Observable<EmployeeProfileDetail> {
+    const form = new FormData();
+    form.append('file', file, file.name);
+    return this.http.post<EmployeeProfileDetail>(`${BASE}/staff/${id}/id-card/${side}`, form);
+  }
+
+  removeIdCard(id: string, side: 'front' | 'back'): Observable<void> {
+    return this.http.delete<void>(`${BASE}/staff/${id}/id-card/${side}`);
+  }
+
+  /** Goes straight into an <a href>/<img src>, so it bypasses the auth interceptor and needs the API origin baked in (same as LeadsService.agreementDocumentDownloadUrl). */
+  idCardDownloadUrl(id: string, side: 'front' | 'back'): string {
+    return `${environment.apiBaseUrl}${BASE}/staff/${id}/id-card/${side}/download`;
+  }
+
+  getStaffMissingIdCard(): Observable<StaffMissingIdCardRow[]> {
+    return this.http.get<StaffMissingIdCardRow[]>(`${BASE}/staff/missing-id-card`);
+  }
+
+  // ---- Employee lookups ----
+
+  getDeveloperTypes(): Observable<LookupValue[]> {
+    return this.http.get<LookupValue[]>(`${BASE}/lookups/developer-types`);
+  }
+
+  createDeveloperType(name: string): Observable<LookupValue> {
+    return this.http.post<LookupValue>(`${BASE}/lookups/developer-types`, { name });
+  }
+
+  getRanks(): Observable<LookupValue[]> {
+    return this.http.get<LookupValue[]>(`${BASE}/lookups/ranks`);
+  }
+
+  createRank(name: string): Observable<LookupValue> {
+    return this.http.post<LookupValue>(`${BASE}/lookups/ranks`, { name });
   }
 
   /** Party only — mints the admin's browser a fresh session as that party. See admin.md for the one-way tradeoff. */

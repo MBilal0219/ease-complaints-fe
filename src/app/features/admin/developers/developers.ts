@@ -7,7 +7,7 @@ import { RouterLink } from '@angular/router';
 import { Subject, catchError, merge, of, switchMap, timer } from 'rxjs';
 import { AdminService } from '../../../core/admin/admin.service';
 import { PagedResult, PersonSummary } from '../../../core/admin/models';
-import { DeveloperFormModal } from '../developer-form-modal/developer-form-modal';
+import { StaffFormModal } from '../staff-form-modal/staff-form-modal';
 import { PendingInvitations } from '../pending-invitations/pending-invitations';
 import { Pagination } from '../../../shared/ui/pagination/pagination';
 
@@ -16,7 +16,7 @@ const POLL_MS = 8_000;
 
 @Component({
   selector: 'app-developers',
-  imports: [DatePipe, FormsModule, RouterLink, DeveloperFormModal, PendingInvitations, Pagination],
+  imports: [DatePipe, FormsModule, RouterLink, StaffFormModal, PendingInvitations, Pagination],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     <div class="flex flex-wrap items-center justify-between gap-3">
@@ -107,7 +107,7 @@ const POLL_MS = 8_000;
       }
     </div>
 
-    <app-developer-form-modal [open]="showAddModal()" (closed)="showAddModal.set(false)" (created)="onCreated()" />
+    <app-staff-form-modal role="Developer" mode="create" [open]="showAddModal()" (closed)="showAddModal.set(false)" (saved)="onCreated()" />
   `,
 })
 export class DevelopersPage implements OnInit {

@@ -7,14 +7,14 @@ import { Subject, catchError, merge, of, switchMap, timer } from 'rxjs';
 import { AdminService } from '../../../core/admin/admin.service';
 import { PagedResult, PersonSummary } from '../../../core/admin/models';
 import { Pagination } from '../../../shared/ui/pagination/pagination';
-import { SalesPersonFormModal } from '../sales-person-form-modal/sales-person-form-modal';
+import { StaffFormModal } from '../staff-form-modal/staff-form-modal';
 
 const PAGE_SIZE = 10;
 const POLL_MS = 8_000;
 
 @Component({
   selector: 'app-sales-people',
-  imports: [DatePipe, FormsModule, RouterLink, SalesPersonFormModal, Pagination],
+  imports: [DatePipe, FormsModule, RouterLink, StaffFormModal, Pagination],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     <div class="flex flex-wrap items-center justify-between gap-3">
@@ -99,7 +99,7 @@ const POLL_MS = 8_000;
       }
     </div>
 
-    <app-sales-person-form-modal [open]="showAddModal()" (closed)="showAddModal.set(false)" (created)="onCreated()" />
+    <app-staff-form-modal role="SalesPerson" mode="create" [open]="showAddModal()" (closed)="showAddModal.set(false)" (saved)="onCreated()" />
   `,
 })
 export class SalesPeoplePage implements OnInit {
