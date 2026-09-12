@@ -34,16 +34,18 @@ import { Modal } from '../../../shared/ui/modal/modal';
             >
               <p class="font-semibold text-slate-900">{{ row.developerDisplayName }}</p>
               <dl class="mt-2 grid grid-cols-2 gap-x-3 gap-y-1 text-sm">
-                <dt class="text-slate-500">Total parties</dt>
+                <dt class="text-slate-500">Customers served</dt>
                 <dd class="text-right font-medium text-slate-700">{{ row.totalParties }}</dd>
-                <dt class="text-slate-500">Pending tasks</dt>
+                <dt class="text-slate-500">Complaints pending</dt>
                 <dd class="text-right font-medium text-amber-700">{{ row.pendingTasks }}</dd>
-                <dt class="text-slate-500">Completed tasks</dt>
+                <dt class="text-slate-500">Complaints completed</dt>
                 <dd class="text-right font-medium text-emerald-700">{{ row.completedTasks }}</dd>
-                <dt class="text-slate-500">Total tasks</dt>
+                <dt class="text-slate-500">Total complaints assigned</dt>
                 <dd class="text-right font-medium text-slate-700">{{ row.totalTasks }}</dd>
-                <dt class="text-slate-500">Pending amount</dt>
-                <dd class="text-right font-medium text-emerald-700">{{ row.pendingAmount | number: '1.0-2' }}</dd>
+                @if (!hidePendingAmount()) {
+                  <dt class="text-slate-500">Estimated amount pending delivery</dt>
+                  <dd class="text-right font-medium text-emerald-700">{{ row.pendingAmount | number: '1.0-2' }}</dd>
+                }
               </dl>
             </a>
           } @empty {
@@ -61,6 +63,8 @@ export class DeveloperWorkloadModal {
   readonly dateTo = input<string | undefined>(undefined);
   /** Route prefix for the per-developer click-through, or null to render the cards as non-links (e.g. from the Implementator dashboard, which has no developer detail page). */
   readonly detailBase = input<string | null>('/app/admin/developers');
+  /** Implementator dashboard doesn't show payment/amount data — see ImplementatorDashboardPage. Defaults to false so the Admin dashboard is unaffected. */
+  readonly hidePendingAmount = input<boolean>(false);
   readonly closed = output<void>();
 
   private readonly adminService = inject(AdminService);

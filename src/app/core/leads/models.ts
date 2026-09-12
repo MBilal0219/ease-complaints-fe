@@ -85,6 +85,17 @@ export interface CreateLeadRequest {
   email?: string | null;
 }
 
+/** Edits the Lead's own intake/contact fields — remarks/feedback are deliberately excluded, since those live as immutable point-in-time Timeline entries, not current state to overwrite. Category/Status are set only via CreateFollowUpRequest. */
+export interface UpdateLeadRequest {
+  name: string;
+  contact: string;
+  businessName?: string | null;
+  businessContact?: string | null;
+  post?: string | null;
+  businessNature?: string | null;
+  email?: string | null;
+}
+
 export interface CreateFollowUpRequest {
   remarks?: string | null;
   category: LeadCategory;
@@ -109,7 +120,13 @@ export interface LeadSummary {
   callId: string | null;
   customerDisplayName: string | null;
   name: string;
+  /** Own intake/contact fields — included here so the call this Lead was collected on can prefill a full edit form without a second round trip. See UpdateCallRequest.leads. */
+  contact: string;
   businessName: string | null;
+  businessContact: string | null;
+  post: string | null;
+  businessNature: string | null;
+  email: string | null;
   /** Null until the first follow-up — see CreateLeadRequest's own doc comment. */
   currentCategory: LeadCategory | null;
   currentStatus: LeadFollowUpStatus | null;

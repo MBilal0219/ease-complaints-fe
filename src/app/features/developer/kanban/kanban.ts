@@ -3,42 +3,88 @@ import { ChangeDetectionStrategy, Component, DestroyRef, OnInit, computed, injec
 import { FormsModule } from '@angular/forms';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { ActivatedRoute, Router, RouterLink } from '@angular/router';
-import { Subject, catchError, merge, of, switchMap, timer } from 'rxjs';
+import { Subject, catchError, forkJoin, map, merge, of, switchMap, timer } from 'rxjs';
+import { AuthService } from '../../../core/auth/auth.service';
 import { TicketsService } from '../../../core/tickets/tickets.service';
 import { RealtimeService } from '../../../core/realtime/realtime.service';
 import {
   HIGH_OR_URGENT_PRIORITY_VALUE,
+  PENDING_STATUS_QUERY_VALUE,
   TICKET_STATUS_BADGE_CLASSES,
   TICKET_STATUS_LABELS,
+  TICKET_TASK_STATUS_BADGE_CLASSES,
+  TICKET_TASK_STATUS_LABELS,
   TicketDto,
   TicketStatus,
+  TicketTaskActivityDto,
+  TicketTaskDto,
+  TicketTaskStatus,
+  categoryBadgeClasses,
+  formatDuration,
   priorityBadgeClasses,
+  priorityBorderClass,
 } from '../../../core/tickets/models';
 import { Pagination } from '../../../shared/ui/pagination/pagination';
 
 const POLL_MS = 8_000;
 const TABLE_PAGE_SIZE = 10;
 
-interface Column {
-  status: TicketStatus;
-  title: string;
-  accent: string;
-  /** Only InProgress/Resolved/Rejected are valid developer-set targets — Assigned is Admin-only, so it's a source column but never a drop target. */
-  isDropTarget: boolean;
-}
-
-const COLUMNS: Column[] = [
-  { status: 'Assigned', title: 'Assigned', accent: 'border-t-amber-400', isDropTarget: false },
-  { status: 'InProgress', title: 'In Progress', accent: 'border-t-purple-400', isDropTarget: true },
-  { status: 'Resolved', title: 'Resolved', accent: 'border-t-green-400', isDropTarget: true },
-  { status: 'Rejected', title: 'Rejected', accent: 'border-t-red-400', isDropTarget: true },
-];
-
-/** A developer's tickets are always one of these — New/Revoked never apply once a developer is assigned. */
+/** A developer's tickets are always one of these — New/Revoked never apply once a developer is assigned. Table view only — see STATUS_FILTER_OPTIONS' own callers. */
 const STATUS_FILTER_OPTIONS: TicketStatus[] = ['Assigned', 'InProgress', 'Resolved', 'Rejected', 'Closed'];
 
 type ViewMode = 'board' | 'table';
 
+/** One task, paired with the complaint it belongs to — what a board card needs. Board-only; Table view stays ticket-level (unchanged). */
+interface TaskCard {
+  ticket: TicketDto;
+  task: TicketTaskDto;
+}
+
+type ColumnKey = 'todo' | 'inprogress' | 'hold' | 'done' | 'closed';
+
+function columnFor(status: TicketTaskStatus): ColumnKey {
+  if (status === 'Assigned' || status === 'Reopened') return 'todo';
+  if (status === 'InProgress') return 'inprogress';
+  if (status === 'OnHold') return 'hold';
+  if (status === 'Resolved' || status === 'Sale') return 'done';
+  return 'closed'; // Rejected, Cancelled
+}
+
+interface ColumnConfig {
+  key: ColumnKey;
+  label: string;
+  borderClass: string;
+  /** The status a drop into this column sets, or null if it doesn't accept drops. To Do never accepts one — a developer can't set a task back to Assigned (that's Admin/Implementator-only, see TicketTaskService.DeveloperAllowedTaskTargets) — but a To Do card can still be dragged OUT (see sourceDraggable). Done/Rejected are view-only in both directions — those transitions need a reason, which a drag can't collect (use the task's own detail on the ticket page instead). */
+  droppableStatus: TicketTaskStatus | null;
+  sourceDraggable: boolean;
+}
+
+const BOARD_COLUMNS: ColumnConfig[] = [
+  { key: 'todo', label: 'To Do', borderClass: 'border-t-amber-400', droppableStatus: null, sourceDraggable: true },
+  { key: 'inprogress', label: 'In Progress', borderClass: 'border-t-purple-400', droppableStatus: 'InProgress', sourceDraggable: true },
+  { key: 'hold', label: 'On Hold', borderClass: 'border-t-yellow-400', droppableStatus: 'OnHold', sourceDraggable: true },
+  { key: 'done', label: 'Done', borderClass: 'border-t-green-400', droppableStatus: null, sourceDraggable: false },
+  { key: 'closed', label: 'Rejected / Cancelled', borderClass: 'border-t-slate-400', droppableStatus: null, sourceDraggable: false },
+];
+
+/** Two-letter initials — kept only for the (rare) case a task shows someone other than the viewer, e.g. "Added by". */
+function initials(name: string): string {
+  const parts = name.trim().split(/\s+/).filter(Boolean);
+  if (parts.length === 0) return '?';
+  if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
+  return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
+}
+
+/**
+ * A Developer's own work: Board is the same Jira-style per-task board as
+ * the Implementator's (see implementator/kanban/kanban.ts) — To Do/In
+ * Progress/On Hold/Done/Rejected columns, cards keyed on the subcomplaint's
+ * own title — but scoped to ONLY this developer's own tasks: no Unassigned
+ * column (a task with no developer can never be theirs), no other
+ * developer's cards, no developer-avatar filter (pointless with just one
+ * developer — themselves). Table view (the older "every ticket ever
+ * assigned to me" list) is unchanged.
+ */
 @Component({
   selector: 'app-kanban',
   imports: [RouterLink, DatePipe, Pagination, FormsModule],
@@ -49,7 +95,7 @@ type ViewMode = 'board' | 'table';
         <h1 class="text-lg font-semibold text-slate-900">My tickets</h1>
         <p class="mt-1 text-sm text-slate-500">
           @if (viewMode() === 'board') {
-            Drag a card to move it — Resolved and Rejected are up to you; Assign is Admin-only.
+            Drag a card between To Do, In Progress, and On Hold to update it.
           } @else {
             Every ticket ever assigned to you, including closed ones.
           }
@@ -75,8 +121,26 @@ type ViewMode = 'board' | 'table';
       </div>
     </div>
 
-    <div class="mt-4 flex flex-wrap items-center gap-2">
-      @if (viewMode() === 'table') {
+    @if (viewMode() === 'board') {
+      <div class="mt-4 flex flex-wrap items-center gap-4">
+        <input
+          type="search"
+          placeholder="Search ticket #, task, complaint…"
+          [(ngModel)]="boardSearch"
+          class="rounded-md border border-slate-300 py-1.5 px-3 text-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+        />
+        <select
+          [(ngModel)]="selectedTicketId"
+          class="rounded-md border border-slate-300 bg-white py-1.5 pl-3 pr-8 text-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+        >
+          <option [ngValue]="null">All complaints</option>
+          @for (option of mainComplaintOptions(); track option.id) {
+            <option [ngValue]="option.id">{{ option.title }}</option>
+          }
+        </select>
+      </div>
+    } @else {
+      <div class="mt-4 flex flex-wrap items-center gap-2">
         <select
           [ngModel]="statusFilter()"
           (ngModelChange)="statusFilter.set($event); tablePage.set(1); syncUrl()"
@@ -87,19 +151,17 @@ type ViewMode = 'board' | 'table';
             <option [value]="status">{{ statusLabels[status] }}</option>
           }
         </select>
-      }
-      <select
-        [ngModel]="priorityFilter()"
-        (ngModelChange)="priorityFilter.set($event); tablePage.set(1); syncUrl()"
-        class="rounded-md border border-slate-300 bg-white py-1.5 pl-3 pr-8 text-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"
-      >
-        <option value="">All priorities</option>
-        <option [value]="highOrUrgent">High or Urgent</option>
-        @for (priority of priorityOptions(); track priority) {
-          <option [value]="priority">{{ priority }}</option>
-        }
-      </select>
-      <div class="relative">
+        <select
+          [ngModel]="priorityFilter()"
+          (ngModelChange)="priorityFilter.set($event); tablePage.set(1); syncUrl()"
+          class="rounded-md border border-slate-300 bg-white py-1.5 pl-3 pr-8 text-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+        >
+          <option value="">All priorities</option>
+          <option [value]="highOrUrgent">High or Urgent</option>
+          @for (priority of priorityOptions(); track priority) {
+            <option [value]="priority">{{ priority }}</option>
+          }
+        </select>
         <input
           type="search"
           placeholder="Search title/category…"
@@ -108,54 +170,111 @@ type ViewMode = 'board' | 'table';
           class="rounded-md border border-slate-300 py-1.5 px-3 text-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"
         />
       </div>
-    </div>
+    }
 
     @if (errorMessage()) {
       <p class="mt-3 text-sm text-red-600" role="alert">{{ errorMessage() }}</p>
     }
 
     @if (viewMode() === 'board') {
-      <div class="mt-6 grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
-        @for (column of columns; track column.status) {
-          <div
-            class="flex flex-col rounded-lg border border-t-4 border-slate-200 bg-slate-50"
-            [class]="column.accent"
-            (dragover)="onDragOver($event, column)"
-            (dragleave)="onDragLeave(column)"
-            (drop)="onDrop($event, column)"
-          >
-            <div class="flex items-center justify-between px-3 py-2.5">
-              <h2 class="text-sm font-semibold text-slate-700">{{ column.title }}</h2>
-              <span class="rounded-full bg-white px-2 py-0.5 text-xs font-medium text-slate-500">{{ ticketsFor(column.status)().length }}</span>
-            </div>
-
+      @if (boardLoading()) {
+        <p class="mt-6 text-sm text-slate-500" role="status">Loading…</p>
+      } @else {
+        <div class="mt-6 flex gap-4 overflow-x-auto pb-2">
+          @for (column of columns; track column.key) {
             <div
-              class="flex min-h-[16rem] flex-1 flex-col gap-2 p-2 transition-colors"
-              [class.bg-indigo-50]="dragOverStatus() === column.status && column.isDropTarget"
+              class="flex w-72 shrink-0 flex-col rounded-lg border border-t-4 border-slate-200 bg-slate-50"
+              [class]="column.borderClass"
+              (dragover)="column.droppableStatus && onDragOver($event, column.key)"
+              (dragleave)="column.droppableStatus && onDragLeave(column.key)"
+              (drop)="column.droppableStatus && onDrop($event, column.droppableStatus, column.key)"
             >
-              @for (ticket of ticketsFor(column.status)(); track ticket.id) {
-                <a
-                  [routerLink]="['/app/developer/tickets', ticket.id]"
-                  draggable="true"
-                  (dragstart)="onDragStart($event, ticket)"
-                  (dragend)="draggingId.set(null)"
-                  class="block cursor-grab rounded-md border border-slate-200 bg-white p-3 text-sm shadow-sm hover:shadow active:cursor-grabbing"
-                  [class.opacity-40]="draggingId() === ticket.id"
-                >
-                  <div class="flex items-center justify-between gap-2">
-                    <span class="font-mono text-xs text-slate-400">{{ ticket.ticketNumber }}</span>
-                    <span class="rounded-full px-1.5 py-0.5 text-[10px] font-medium" [class]="priorityClasses(ticket.priorityName)">{{ ticket.priorityName }}</span>
+              <div class="flex items-center justify-between px-3 py-2.5">
+                <h2 class="text-sm font-semibold text-slate-700">{{ column.label }}</h2>
+                <span class="rounded-full bg-white px-2 py-0.5 text-xs font-medium text-slate-500">{{ cardsFor(column.key)().length }}</span>
+              </div>
+              <div class="flex min-h-[16rem] flex-1 flex-col gap-2 p-2 transition-colors" [class.bg-indigo-50]="dragOverColumn() === column.key">
+                @for (card of cardsFor(column.key)(); track card.task.id) {
+                  <div
+                    (click)="openTicket(card)"
+                    [draggable]="column.sourceDraggable"
+                    (dragstart)="column.sourceDraggable && onDragStart($event, card)"
+                    (dragend)="draggingTaskId.set(null)"
+                    class="cursor-pointer rounded-md border-l-4 border-y border-r border-slate-200 bg-white p-3 text-sm shadow-sm hover:shadow"
+                    [class]="priorityBorderClass(card.ticket.priorityName)"
+                    [class.opacity-40]="draggingTaskId() === card.task.id"
+                  >
+                    <div class="flex items-start justify-between gap-2">
+                      <p class="font-mono text-[10px] text-slate-400">{{ card.ticket.ticketNumber }} · #{{ card.task.sequenceNumber }}</p>
+                      <button
+                        type="button"
+                        (click)="$event.stopPropagation(); openHistory(card)"
+                        title="View history"
+                        class="flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-slate-400 hover:bg-slate-100 hover:text-slate-600"
+                      >
+                        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="h-3.5 w-3.5">
+                          <path stroke-linecap="round" stroke-linejoin="round" d="M12 6v6l4 2M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z" />
+                        </svg>
+                      </button>
+                    </div>
+                    <p class="mt-1 line-clamp-2 font-medium text-slate-800">{{ card.task.title || card.task.description }}</p>
+                    <div class="mt-1.5 flex items-center justify-between gap-2">
+                      <span class="rounded-full px-1.5 py-0.5 text-[10px] font-medium" [class]="categoryBadgeClasses(card.ticket.categoryName)">{{ card.ticket.categoryName }}</span>
+                      <span class="rounded-full px-1.5 py-0.5 text-[10px] font-medium" [class]="priorityBadgeClasses(card.ticket.priorityName)">{{ card.ticket.priorityName }}</span>
+                    </div>
+                    <p class="mt-1.5 text-xs font-medium text-slate-700">{{ card.ticket.companyName || '—' }}</p>
+                    <p class="text-xs text-slate-500">{{ card.ticket.createdByDisplayName || '—' }}</p>
+                    <p class="mt-1.5 text-[11px] text-slate-400">Added by <span class="font-medium text-slate-600">{{ addedByLabel(card.task) }}</span></p>
                   </div>
-                  <p class="mt-1.5 line-clamp-2 font-medium text-slate-800">{{ ticket.title }}</p>
-                  <p class="mt-1 text-xs text-slate-400">{{ ticket.categoryName }}</p>
-                </a>
-              } @empty {
-                <p class="p-4 text-center text-xs text-slate-400">Nothing here.</p>
-              }
+                } @empty {
+                  <p class="p-4 text-center text-xs text-slate-400">Nothing here.</p>
+                }
+              </div>
+            </div>
+          }
+        </div>
+      }
+
+      @if (historyCard(); as card) {
+        <div class="pos-hide-print fixed inset-0 z-50 flex items-center justify-center p-4">
+          <div class="fixed inset-0 bg-slate-900/50 backdrop-blur-[1px]" (click)="closeHistory()"></div>
+          <div class="relative flex max-h-[80vh] w-full max-w-md flex-col rounded-xl bg-white shadow-xl">
+            <button
+              type="button"
+              (click)="closeHistory()"
+              aria-label="Close"
+              class="absolute right-4 top-4 z-10 rounded-md p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-600"
+            >
+              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" class="h-5 w-5">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M6 18 18 6M6 6l12 12" />
+              </svg>
+            </button>
+
+            <div class="overflow-y-auto p-6">
+              <p class="font-mono text-xs text-slate-400">{{ card.ticket.ticketNumber }} · #{{ card.task.sequenceNumber }}</p>
+              <h2 class="mt-1 pr-8 text-base font-semibold text-slate-900">{{ card.task.title || card.task.description }}</h2>
+              <p class="mt-2 text-xs text-slate-500">
+                Time in progress: <span class="font-medium text-slate-700">{{ formatDuration(card.task.inProgressElapsedMinutes) }}</span>
+              </p>
+
+              <p class="mt-4 text-[11px] font-semibold uppercase tracking-wide text-slate-400">History</p>
+              <div class="mt-1.5 space-y-2.5 border-l-2 border-slate-100 pl-3">
+                @for (entry of card.task.activity; track entry.id) {
+                  <div class="text-xs">
+                    <span class="rounded-full px-1.5 py-0.5 font-medium" [class]="statusBadgeClass(entry.toStatus)">{{ statusLabel(entry.toStatus) }}</span>
+                    <span class="ml-1.5 text-slate-500">{{ actorLabel(entry) }} · {{ entry.changedAtUtc | date: 'medium' }}</span>
+                    @if (entry.reason) {
+                      <p class="mt-0.5 text-slate-600">{{ entry.reason }}</p>
+                    }
+                  </div>
+                } @empty {
+                  <p class="text-xs text-slate-400">No history yet.</p>
+                }
+              </div>
             </div>
           </div>
-        }
-      </div>
+        </div>
+      }
     } @else {
       <div class="mt-6 overflow-hidden rounded-lg border border-slate-200 bg-white">
         <div class="overflow-x-auto">
@@ -181,7 +300,7 @@ type ViewMode = 'board' | 'table';
                     </span>
                   </td>
                   <td class="px-4 py-2.5">
-                    <span class="rounded-full px-2 py-0.5 text-xs font-medium" [class]="priorityClasses(ticket.priorityName)">
+                    <span class="rounded-full px-2 py-0.5 text-xs font-medium" [class]="priorityBadgeClasses(ticket.priorityName)">
                       {{ ticket.priorityName }}
                     </span>
                   </td>
@@ -209,43 +328,43 @@ type ViewMode = 'board' | 'table';
   `,
 })
 export class KanbanPage implements OnInit {
-  protected readonly columns = COLUMNS;
   protected readonly statusLabels = TICKET_STATUS_LABELS;
   protected readonly statusClasses = TICKET_STATUS_BADGE_CLASSES;
   protected readonly statusFilterOptions = STATUS_FILTER_OPTIONS;
-  protected readonly priorityClasses = priorityBadgeClasses;
+  protected readonly priorityBadgeClasses = priorityBadgeClasses;
   protected readonly highOrUrgent = HIGH_OR_URGENT_PRIORITY_VALUE;
   protected readonly tablePageSizeValue = TABLE_PAGE_SIZE;
+  protected readonly columns = BOARD_COLUMNS;
+  protected readonly initialsOf = initials;
+  protected readonly categoryBadgeClasses = categoryBadgeClasses;
+  protected readonly priorityBorderClass = priorityBorderClass;
+  protected readonly formatDuration = formatDuration;
+  protected readonly taskStatusLabels = TICKET_TASK_STATUS_LABELS;
+  protected readonly taskStatusBadgeClasses = TICKET_TASK_STATUS_BADGE_CLASSES;
 
   private readonly ticketsService = inject(TicketsService);
+  private readonly authService = inject(AuthService);
   private readonly destroyRef = inject(DestroyRef);
   private readonly realtimeService = inject(RealtimeService);
   private readonly route = inject(ActivatedRoute);
   private readonly router = inject(Router);
 
-  protected readonly allTickets = signal<TicketDto[]>([]);
-  protected readonly draggingId = signal<string | null>(null);
-  protected readonly dragOverStatus = signal<TicketStatus | null>(null);
-  protected readonly errorMessage = signal<string | null>(null);
   protected readonly viewMode = signal<ViewMode>('board');
+  protected readonly errorMessage = signal<string | null>(null);
+
+  // ---- Table view (unchanged from the previous ticket-level board) ----
+  protected readonly allTickets = signal<TicketDto[]>([]);
   protected readonly tablePage = signal(1);
   protected readonly search = signal('');
   protected readonly priorityFilter = signal('');
   protected readonly statusFilter = signal<TicketStatus | ''>('');
 
-  protected readonly priorityOptions = computed(() =>
-    [...new Set(this.allTickets().map((t) => t.priorityName))].sort(),
-  );
+  protected readonly priorityOptions = computed(() => [...new Set(this.allTickets().map((t) => t.priorityName))].sort());
 
-  // Client-side — the developer board/table already fetches up to 200
-  // tickets in one page, so a second network round trip per filter change
-  // isn't worth it. statusFilter only applies in table view — the board's
-  // columns are already the status grouping, so it's hidden (not reset)
-  // when switching back to board, and ignored here to match.
   private readonly filteredTickets = computed(() => {
     const term = this.search().trim().toLowerCase();
     const priority = this.priorityFilter();
-    const status = this.viewMode() === 'table' ? this.statusFilter() : '';
+    const status = this.statusFilter();
     return this.allTickets().filter((t) => {
       if (status && t.status !== status) return false;
       if (priority === HIGH_OR_URGENT_PRIORITY_VALUE) {
@@ -265,6 +384,63 @@ export class KanbanPage implements OnInit {
     return sorted.slice(start, start + TABLE_PAGE_SIZE);
   });
 
+  // ---- Board view — the new Jira-style per-task board, scoped to this developer's own tasks only ----
+  protected readonly boardLoading = signal(true);
+  protected readonly cards = signal<TaskCard[]>([]);
+  protected boardSearch = '';
+  protected selectedTicketId: string | null = null;
+
+  protected readonly draggingTaskId = signal<string | null>(null);
+  protected readonly dragOverColumn = signal<ColumnKey | null>(null);
+  protected readonly historyTaskId = signal<string | null>(null);
+  /** Recomputed from `cards()` (not a static snapshot) so the popup stays live if a poll refresh brings in a newer activity entry while it's open. */
+  protected readonly historyCard = computed(() => {
+    const id = this.historyTaskId();
+    return id ? (this.cards().find((c) => c.task.id === id) ?? null) : null;
+  });
+
+  protected readonly mainComplaintOptions = computed(() => {
+    const seen = new Map<string, string>();
+    for (const card of this.cards()) seen.set(card.ticket.id, card.ticket.title);
+    return [...seen.entries()].map(([id, title]) => ({ id, title })).sort((a, b) => a.title.localeCompare(b.title));
+  });
+
+  private readonly filteredCards = computed(() => {
+    const term = this.boardSearch.trim().toLowerCase();
+    const ticketId = this.selectedTicketId;
+    return this.cards().filter((c) => {
+      if (ticketId && c.ticket.id !== ticketId) return false;
+      if (!term) return true;
+      const haystack = `${c.ticket.ticketNumber} ${c.ticket.title} ${c.task.title ?? ''} ${c.task.description}`.toLowerCase();
+      return haystack.includes(term);
+    });
+  });
+
+  cardsFor(columnKey: ColumnKey) {
+    return computed(() => this.filteredCards().filter((c) => columnFor(c.task.status) === columnKey));
+  }
+
+  protected statusLabel(status: TicketTaskStatus): string {
+    return this.taskStatusLabels[status];
+  }
+
+  protected statusBadgeClass(status: TicketTaskStatus): string {
+    return this.taskStatusBadgeClasses[status];
+  }
+
+  /** "you" when the current viewer submitted/added the task themselves; otherwise the creator's name and the role they held at the time. */
+  protected addedByLabel(task: TicketTaskDto): string {
+    if (task.createdByUserId === this.authService.currentUser()?.id) return 'you';
+    const role = task.activity.find((a) => a.fromStatus == null)?.changedByRole;
+    return role ? `${task.createdByDisplayName} · ${role}` : task.createdByDisplayName;
+  }
+
+  protected actorLabel(entry: TicketTaskActivityDto): string {
+    if (entry.changedByUserId == null) return entry.changedByRole;
+    if (entry.changedByUserId === this.authService.currentUser()?.id) return 'you';
+    return entry.changedByDisplayName ?? entry.changedByRole;
+  }
+
   private readonly manualRefresh = new Subject<void>();
 
   ngOnInit(): void {
@@ -281,13 +457,38 @@ export class KanbanPage implements OnInit {
 
     merge(timer(0, POLL_MS), this.manualRefresh, this.realtimeService.notificationCreated$)
       .pipe(
-        switchMap(() =>
-          this.ticketsService.getDeveloperTickets({ page: 1, pageSize: 200 }).pipe(catchError(() => of(null))),
-        ),
+        switchMap(() => this.ticketsService.getDeveloperTickets({ page: 1, pageSize: 200 }).pipe(catchError(() => of(null)))),
         takeUntilDestroyed(this.destroyRef),
       )
       .subscribe((result) => {
         if (result) this.allTickets.set(result.items);
+      });
+
+    const developerId = this.authService.currentUser()?.id ?? null;
+    merge(timer(0, POLL_MS), this.manualRefresh, this.realtimeService.notificationCreated$)
+      .pipe(
+        switchMap(() =>
+          this.ticketsService.getDeveloperTickets({ status: PENDING_STATUS_QUERY_VALUE, page: 1, pageSize: 100 }).pipe(
+            switchMap((result) => {
+              if (result.items.length === 0) return of<TaskCard[]>([]);
+              return forkJoin(
+                result.items.map((ticket) =>
+                  this.ticketsService.getTasksAsDeveloper(ticket.id).pipe(
+                    // Only this developer's own tasks — a ticket can have other tasks assigned to other developers.
+                    map((tasks) => tasks.filter((task) => task.currentDeveloperId === developerId).map((task): TaskCard => ({ ticket, task }))),
+                    catchError(() => of<TaskCard[]>([])),
+                  ),
+                ),
+              ).pipe(map((groups) => groups.flat()));
+            }),
+            catchError(() => of(null)),
+          ),
+        ),
+        takeUntilDestroyed(this.destroyRef),
+      )
+      .subscribe((cards) => {
+        if (cards) this.cards.set(cards);
+        this.boardLoading.set(false);
       });
   }
 
@@ -304,48 +505,56 @@ export class KanbanPage implements OnInit {
     });
   }
 
-  ticketsFor(status: TicketStatus) {
-    return computed(() => this.filteredTickets().filter((t) => t.status === status));
+  openTicket(card: TaskCard): void {
+    this.router.navigate(['/app/developer/tickets', card.ticket.id]);
   }
 
-  onDragStart(event: DragEvent, ticket: TicketDto): void {
-    this.draggingId.set(ticket.id);
-    event.dataTransfer?.setData('text/plain', ticket.id);
+  openHistory(card: TaskCard): void {
+    this.historyTaskId.set(card.task.id);
+  }
+
+  closeHistory(): void {
+    this.historyTaskId.set(null);
+  }
+
+  onDragStart(event: DragEvent, card: TaskCard): void {
+    this.draggingTaskId.set(card.task.id);
+    event.dataTransfer?.setData('text/plain', JSON.stringify({ ticketId: card.ticket.id, taskId: card.task.id }));
     if (event.dataTransfer) event.dataTransfer.effectAllowed = 'move';
   }
 
-  onDragOver(event: DragEvent, column: Column): void {
-    if (!column.isDropTarget) return;
+  onDragOver(event: DragEvent, columnKey: ColumnKey): void {
     event.preventDefault();
-    this.dragOverStatus.set(column.status);
+    this.dragOverColumn.set(columnKey);
   }
 
-  onDragLeave(column: Column): void {
-    if (this.dragOverStatus() === column.status) {
-      this.dragOverStatus.set(null);
+  onDragLeave(columnKey: ColumnKey): void {
+    if (this.dragOverColumn() === columnKey) {
+      this.dragOverColumn.set(null);
     }
   }
 
-  onDrop(event: DragEvent, column: Column): void {
+  onDrop(event: DragEvent, targetStatus: TicketTaskStatus, columnKey: ColumnKey): void {
     event.preventDefault();
-    this.dragOverStatus.set(null);
-    if (!column.isDropTarget) return;
+    this.dragOverColumn.set(null);
+    this.draggingTaskId.set(null);
 
-    const ticketId = event.dataTransfer?.getData('text/plain');
-    this.draggingId.set(null);
-    if (!ticketId) return;
+    const raw = event.dataTransfer?.getData('text/plain');
+    if (!raw) return;
+    const { ticketId, taskId } = JSON.parse(raw) as { ticketId: string; taskId: string };
 
-    const ticket = this.allTickets().find((t) => t.id === ticketId);
-    if (!ticket || ticket.status === column.status) return;
+    const card = this.cards().find((c) => c.task.id === taskId);
+    if (!card || columnFor(card.task.status) === columnKey) return;
+    // Only a plain In Progress/On Hold flip is drag-driven — Assigned isn't a developer-settable target at all, and anything terminal needs its own reason-required flow.
+    if (card.task.status !== 'Assigned' && card.task.status !== 'InProgress' && card.task.status !== 'OnHold' && card.task.status !== 'Reopened') return;
 
     this.errorMessage.set(null);
-    // Optimistic move — reverted from the next poll if the server rejects it.
-    this.allTickets.update((tickets) => tickets.map((t) => (t.id === ticketId ? { ...t, status: column.status } : t)));
+    this.cards.update((cards) => cards.map((c) => (c.task.id === taskId ? { ...c, task: { ...c.task, status: targetStatus } } : c)));
 
-    this.ticketsService.updateStatus(ticketId, column.status).subscribe({
+    this.ticketsService.updateTaskStatusAsDeveloper(ticketId, taskId, targetStatus).subscribe({
       next: () => this.manualRefresh.next(),
       error: (error) => {
-        this.errorMessage.set(error.error?.error ?? 'Could not move this ticket.');
+        this.errorMessage.set(error.error?.error ?? 'Could not update this task.');
         this.manualRefresh.next();
       },
     });

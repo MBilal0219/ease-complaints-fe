@@ -1,4 +1,4 @@
-export type TicketStatus = 'New' | 'Assigned' | 'InProgress' | 'Resolved' | 'Rejected' | 'Closed' | 'Revoked' | 'Sale';
+export type TicketStatus = 'New' | 'Assigned' | 'InProgress' | 'Resolved' | 'Rejected' | 'Closed' | 'Revoked' | 'Sale' | 'Cancelled';
 
 export type DealStatus = 'DeliveryDatePending' | 'Scheduled' | 'Completed';
 
@@ -60,9 +60,12 @@ export interface TicketDto {
   categoryName: string;
   priorityId: number;
   priorityName: string;
-  createdByUserId: string;
+  /** Null when this complaint was created by an Implementator/Admin with no Party attached. */
+  createdByUserId: string | null;
   createdByDisplayName: string;
   createdByEmail: string;
+  /** The creating Party's Company — empty for an Implementator-created "no party" ticket. */
+  companyName: string;
   assignedDeveloperId: string | null;
   assignedDeveloperDisplayName: string | null;
   createdAtUtc: string;
@@ -75,6 +78,171 @@ export interface TicketDto {
   deal: DealSummary | null;
   /** Sum of each root message's latest Sale-outcome sub-complaint amount, or null if none. Omitted for a Party viewer unless the Admin has turned on TicketSettings.showSaleAmountToParty. */
   totalSubComplaintSaleAmount: number | null;
+  /** This complaint's subcomplaints/tasks — see TicketTaskDto. Null for a Party viewer (they see only the overall status above and their own conversation, never per-task detail). */
+  tasks: TicketTaskDto[] | null;
+  /** Sum of every task's Amount, or null if none set. Independent of totalSubComplaintSaleAmount above (a separate, older mechanic). */
+  totalTaskAmount: number | null;
+}
+
+// ---- Subcomplaints/tasks — see Entities/TicketTask.cs on the backend ----
+
+export type TicketTaskStatus = 'Pending' | 'Assigned' | 'InProgress' | 'OnHold' | 'Resolved' | 'Rejected' | 'Cancelled' | 'Reopened' | 'Sale';
+
+export const TICKET_TASK_STATUS_LABELS: Record<TicketTaskStatus, string> = {
+  Pending: 'Pending',
+  Assigned: 'Assigned',
+  InProgress: 'In Progress',
+  OnHold: 'On Hold',
+  Resolved: 'Resolved',
+  Rejected: 'Rejected',
+  Cancelled: 'Cancelled',
+  Reopened: 'Reopened',
+  Sale: 'Sale',
+};
+
+export const TICKET_TASK_STATUS_BADGE_CLASSES: Record<TicketTaskStatus, string> = {
+  Pending: 'bg-blue-100 text-blue-700',
+  Assigned: 'bg-amber-100 text-amber-700',
+  InProgress: 'bg-purple-100 text-purple-700',
+  OnHold: 'bg-yellow-100 text-yellow-800',
+  Resolved: 'bg-green-100 text-green-700',
+  Rejected: 'bg-red-100 text-red-700',
+  Cancelled: 'bg-slate-200 text-slate-600',
+  Reopened: 'bg-sky-100 text-sky-700',
+  Sale: 'bg-fuchsia-100 text-fuchsia-700',
+};
+
+/** A task is "active" work a developer should see — not Rejected/Cancelled/Resolved/Sale. Mirrors the backend's derived-status/Kanban-visibility rule. */
+export const ACTIVE_TASK_STATUSES: TicketTaskStatus[] = ['Pending', 'Assigned', 'InProgress', 'OnHold', 'Reopened'];
+
+export interface TicketTaskEffort {
+  developerId: string;
+  developerDisplayName: string;
+  effortMinutes: number;
+}
+
+/**
+ * One status transition on a task, rendered as a reply/activity entry
+ * against the original subcomplaint — never a replacement of it.
+ * changedByUserId/changedByDisplayName come back null for a Party viewer
+ * (staff identity is redacted); render "you" client-side when
+ * changedByUserId matches the current user's own id, never sent as literal
+ * text by the server.
+ */
+export interface TicketTaskActivityDto {
+  id: string;
+  fromStatus: TicketTaskStatus | null;
+  toStatus: TicketTaskStatus;
+  changedByUserId: string | null;
+  changedByDisplayName: string | null;
+  changedByRole: string;
+  changedAtUtc: string;
+  reason: string | null;
+  attachments: TicketAttachmentDto[];
+}
+
+export interface TicketTaskDto {
+  id: string;
+  ticketId: string;
+  sequenceNumber: number;
+  title: string | null;
+  description: string;
+  status: TicketTaskStatus;
+  currentDeveloperId: string | null;
+  currentDeveloperDisplayName: string | null;
+  estimatedMinutes: number | null;
+  amount: number | null;
+  lastRejectReason: string | null;
+  lastCancelReason: string | null;
+  assignmentCount: number;
+  totalEffortMinutes: number;
+  perDeveloperEffort: TicketTaskEffort[];
+  /** The developer's actual work clock — every interval spent InProgress, paused by OnHold. Not the same as totalEffortMinutes above (which counts the whole time a developer has been assigned, regardless of pauses). */
+  inProgressElapsedMinutes: number;
+  /** Files attached to this subcomplaint's own original submission. */
+  attachments: TicketAttachmentDto[];
+  /** The reply/activity feed — every status change with its reason and attachments. */
+  activity: TicketTaskActivityDto[];
+  createdByUserId: string;
+  createdByDisplayName: string;
+  createdAtUtc: string;
+  updatedAtUtc: string;
+  resolvedAtUtc: string | null;
+}
+
+export interface CreateTicketTaskRequest {
+  title?: string;
+  description: string;
+  estimateValue?: number;
+  estimateUnit?: EstimateUnit;
+  amount?: number;
+  files?: File[];
+}
+
+/** The Party's own "submit a subcomplaint" request — Title is required (unlike CreateTicketTaskRequest's optional one). Every subcomplaint is Party-authored; the Implementator/Admin only triages it. */
+export interface SubmitSubComplaintRequest {
+  title: string;
+  description: string;
+  files?: File[];
+}
+
+export interface UpdateTicketTaskStatusRequest {
+  status: TicketTaskStatus;
+  /** Mandatory (enforced server-side) when status is Rejected, Resolved, or Cancelled. */
+  reason?: string;
+  files?: File[];
+}
+
+/** Implementator/Admin's "Add as Sale" — a lightweight per-task outcome (amount + description), not the ticket-level Deal subsystem. */
+export interface MarkTicketTaskAsSaleRequest {
+  amount: number;
+  description: string;
+  files?: File[];
+}
+
+/** "Minutes"|"Hours"|"Days"|"Weeks"|"Months" — a human-scale duration picker; normalized to minutes for storage. */
+export type EstimateUnit = 'Minutes' | 'Hours' | 'Days' | 'Weeks' | 'Months';
+
+export const ESTIMATE_UNITS: EstimateUnit[] = ['Minutes', 'Hours', 'Days', 'Weeks', 'Months'];
+
+const MINUTES_PER_UNIT: Record<EstimateUnit, number> = {
+  Minutes: 1,
+  Hours: 60,
+  Days: 60 * 24,
+  Weeks: 60 * 24 * 7,
+  Months: 60 * 24 * 30,
+};
+
+export function estimateToMinutes(value: number, unit: EstimateUnit): number {
+  return Math.round(value * MINUTES_PER_UNIT[unit]);
+}
+
+/** Display-only — one step coarser than EstimateUnit's pickable list. "Year" only ever shows up when rendering a duration (e.g. accumulated effort); it's never an option in the Set Estimate dropdown since the backend's TicketTaskEstimateUnits doesn't recognize it. */
+const DURATION_DISPLAY_UNITS: [string, number][] = [
+  ['year', MINUTES_PER_UNIT.Months * 12],
+  ['month', MINUTES_PER_UNIT.Months],
+  ['week', MINUTES_PER_UNIT.Weeks],
+  ['day', MINUTES_PER_UNIT.Days],
+  ['hour', MINUTES_PER_UNIT.Hours],
+  ['minute', 1],
+];
+
+/** Renders a duration as its two largest units — "2 hours 9 minutes" / "5 days 14 hours" — instead of a single unit that either loses precision (rounding to "2.2 hours") or stays needlessly granular ("129 minutes"). */
+export function formatDuration(minutes: number | null): string {
+  if (minutes == null) return '—';
+  const total = Math.round(minutes);
+  if (total === 0) return '0 minutes';
+
+  const parts: string[] = [];
+  let remaining = total;
+  for (const [label, unitMinutes] of DURATION_DISPLAY_UNITS) {
+    if (parts.length === 2) break;
+    if (remaining < unitMinutes) continue;
+    const value = Math.floor(remaining / unitMinutes);
+    remaining -= value * unitMinutes;
+    parts.push(`${value} ${value === 1 ? label : label + 's'}`);
+  }
+  return parts.join(' ');
 }
 
 export interface PagedResult<T> {
@@ -89,6 +257,16 @@ export interface CreateTicketRequest {
   description: string;
   categoryId: number;
   priorityId: number;
+}
+
+/** The Implementator/Admin's own "Create Complaint" — with an existing Party attached, or none at all. */
+export interface CreateTicketAsImplementatorRequest {
+  title: string;
+  description: string;
+  categoryId: number;
+  priorityId: number;
+  /** Null/omitted = "no party". */
+  partyUserId?: string | null;
 }
 
 export interface TicketFilter {
@@ -153,7 +331,12 @@ export interface TicketMessageDto {
   saleAmount: number | null;
   reassignedToDeveloperId: string | null;
   reassignedToDeveloperDisplayName: string | null;
+  /** 'Party' | 'Developer' | null — null means this predates the conversation split and is shown in both threads. See req #16. */
+  audience: TicketMessageAudience | null;
 }
+
+/** Party↔Implementator and Developer↔Implementator are kept as two separate conversation threads. */
+export type TicketMessageAudience = 'Party' | 'Developer';
 
 /** Posting a plain reply needs only body/files; replying to a specific message as its own sub-complaint additionally needs parentMessageId + outcomeStatus (Admin/assigned-Developer only). */
 export interface PostMessageOutcome {
@@ -201,6 +384,7 @@ export const TICKET_STATUS_LABELS: Record<TicketStatus, string> = {
   Closed: 'Closed',
   Revoked: 'Revoked',
   Sale: 'Sale',
+  Cancelled: 'Cancelled',
 };
 
 export const TICKET_STATUS_BADGE_CLASSES: Record<TicketStatus, string> = {
@@ -212,6 +396,7 @@ export const TICKET_STATUS_BADGE_CLASSES: Record<TicketStatus, string> = {
   Closed: 'bg-slate-200 text-slate-600',
   Revoked: 'bg-orange-100 text-orange-700',
   Sale: 'bg-fuchsia-100 text-fuchsia-700',
+  Cancelled: 'bg-slate-200 text-slate-600',
 };
 
 export interface StatusOption {
@@ -253,7 +438,7 @@ export function adminStatusOptionsFor(ticket: Pick<TicketDto, 'status' | 'assign
   if (ticket.status === 'Closed') {
     return [{ value: ticket.assignedDeveloperId ? 'Assigned' : 'New', label: 'Reopen' }];
   }
-  if (ticket.status === 'Revoked' || ticket.status === 'Sale') {
+  if (ticket.status === 'Revoked' || ticket.status === 'Sale' || ticket.status === 'Cancelled') {
     return [];
   }
 
@@ -276,4 +461,34 @@ export const PRIORITY_BADGE_CLASSES: Record<string, string> = {
 
 export function priorityBadgeClasses(priorityName: string): string {
   return PRIORITY_BADGE_CLASSES[priorityName.toLowerCase()] ?? 'bg-slate-100 text-slate-600';
+}
+
+/// A card's left-border accent — same urgency scale as PRIORITY_BADGE_CLASSES, just as a border-left color instead of a badge fill.
+export const PRIORITY_BORDER_CLASSES: Record<string, string> = {
+  low: 'border-l-slate-300',
+  medium: 'border-l-sky-400',
+  high: 'border-l-orange-400',
+  urgent: 'border-l-red-500',
+};
+
+export function priorityBorderClass(priorityName: string): string {
+  return PRIORITY_BORDER_CLASSES[priorityName.toLowerCase()] ?? 'border-l-slate-300';
+}
+
+/// Categories are admin-configurable (no fixed set), so colors are assigned deterministically by hashing the name into a fixed palette — the same category always renders the same color without a hardcoded name→color table.
+const CATEGORY_COLOR_PALETTE: string[] = [
+  'bg-blue-100 text-blue-700',
+  'bg-emerald-100 text-emerald-700',
+  'bg-amber-100 text-amber-700',
+  'bg-pink-100 text-pink-700',
+  'bg-cyan-100 text-cyan-700',
+  'bg-violet-100 text-violet-700',
+  'bg-lime-100 text-lime-700',
+  'bg-rose-100 text-rose-700',
+];
+
+export function categoryBadgeClasses(categoryName: string): string {
+  let hash = 0;
+  for (let i = 0; i < categoryName.length; i++) hash = (hash * 31 + categoryName.charCodeAt(i)) | 0;
+  return CATEGORY_COLOR_PALETTE[Math.abs(hash) % CATEGORY_COLOR_PALETTE.length];
 }

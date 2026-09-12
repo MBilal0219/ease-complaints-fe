@@ -59,6 +59,14 @@ import { Toggle } from '../../../shared/ui/toggle/toggle';
 
         <app-company-picker formControlName="orgSelection" />
 
+        <div class="flex items-center justify-between rounded-md border border-slate-200 bg-slate-50 px-3 py-2.5">
+          <div>
+            <p class="text-sm font-medium text-slate-700">Allow this party to add complaints themselves</p>
+            <p class="text-xs text-slate-500">Turn off if complaints should only ever be filed on their behalf.</p>
+          </div>
+          <app-toggle formControlName="canSelfFileComplaints" />
+        </div>
+
         @if (errorMessage()) {
           <p class="text-sm text-red-600" role="alert">{{ errorMessage() }}</p>
         }
@@ -101,6 +109,7 @@ export class PartyFormModal {
     password: this.fb.nonNullable.control(''),
     // Encoded "company:<id>" / "branch:<id>" / null — see CompanyPicker's own doc comment.
     orgSelection: this.fb.control<string | null>(null),
+    canSelfFileComplaints: this.fb.nonNullable.control(true),
   });
 
   constructor() {
@@ -113,7 +122,7 @@ export class PartyFormModal {
     // Reset to a clean form every time the modal is (re)opened.
     effect(() => {
       if (this.open()) {
-        this.form.reset({ displayName: '', email: '', location: '', branch: '', phoneNumber: '', sendInvite: true, password: '', orgSelection: null });
+        this.form.reset({ displayName: '', email: '', location: '', branch: '', phoneNumber: '', sendInvite: true, password: '', orgSelection: null, canSelfFileComplaints: true });
         this.errorMessage.set(null);
       }
     });
@@ -133,15 +142,15 @@ export class PartyFormModal {
 
     this.submitting.set(true);
     this.errorMessage.set(null);
-    const { displayName, email, location, branch, phoneNumber, sendInvite, password, orgSelection } = this.form.getRawValue();
+    const { displayName, email, location, branch, phoneNumber, sendInvite, password, orgSelection, canSelfFileComplaints } = this.form.getRawValue();
 
     // Decode CompanyPicker's "company:<id>" / "branch:<id>" / null — see its own doc comment.
     const companyId = orgSelection?.startsWith('company:') ? orgSelection.slice('company:'.length) : undefined;
     const branchId = orgSelection?.startsWith('branch:') ? orgSelection.slice('branch:'.length) : undefined;
 
     const request$: Observable<unknown> = sendInvite
-      ? this.invitationsService.create({ displayName, email, role: 'User', location, branch, phoneNumber, companyId, branchId })
-      : this.adminService.createParty({ displayName, email, location, branch, phoneNumber, password, companyId, branchId });
+      ? this.invitationsService.create({ displayName, email, role: 'User', location, branch, phoneNumber, companyId, branchId, canSelfFileComplaints })
+      : this.adminService.createParty({ displayName, email, location, branch, phoneNumber, password, companyId, branchId, canSelfFileComplaints });
 
     request$.subscribe({
       next: () => {

@@ -1,14 +1,27 @@
 import { DatePipe } from '@angular/common';
 import { HttpErrorResponse } from '@angular/common/http';
-import { ChangeDetectionStrategy, Component, DestroyRef, computed, inject, signal } from '@angular/core';
+import { ChangeDetectionStrategy, Component, DestroyRef, ElementRef, computed, inject, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { ActivatedRoute, RouterLink } from '@angular/router';
 import { catchError, distinctUntilChanged, map, of, switchMap } from 'rxjs';
+import { AdminService } from '../../../core/admin/admin.service';
 import { AuthService } from '../../../core/auth/auth.service';
+import { ROLE_ADMIN } from '../../../core/auth/models';
 import { LEAD_CATEGORY_BADGE_CLASSES, LEAD_CATEGORY_LABELS } from '../../../core/leads/models';
-import { CALL_OUTCOME_BADGE_CLASSES, CALL_OUTCOME_LABELS, CallDetailWithPayment, CallSummary, PaymentCallStatus } from '../../../core/sales-person/models';
-import { PAYMENT_STATUS_LABELS } from '../../../core/sales-person/models';
+import { TicketLookups } from '../../../core/tickets/models';
+import { TicketsService } from '../../../core/tickets/tickets.service';
+import {
+  CALL_OUTCOME_BADGE_CLASSES,
+  CALL_OUTCOME_LABELS,
+  CallDetailWithPayment,
+  CallOutcome,
+  CallSummary,
+  PAYMENT_STATUS_LABELS,
+  PaymentCallStatus,
+  UpdateCallLeadRequest,
+  UpdateCallRequest,
+} from '../../../core/sales-person/models';
 import { SalesPersonService } from '../../../core/sales-person/sales-person.service';
 
 const PAYMENT_STATUS_OPTIONS: PaymentCallStatus[] = ['Cleared', 'PartiallyCleared', 'Extended', 'Other'];
@@ -28,11 +41,37 @@ function isoDate(date: Date): string {
   return `${year}-${month}-${day}`;
 }
 
+/** One referral row in the edit form — see log-call.ts's own LeadDraft. `id` set means it's an existing Lead (Remarks/Feedback aren't re-editable, see UpdateCallLeadRequest); omitted means it's a brand-new one being added right now. */
+interface EditLeadDraft {
+  id?: string;
+  name: string;
+  contact: string;
+  email: string;
+  businessName: string;
+  businessContact: string;
+  post: string;
+  businessNature: string;
+  remarks: string;
+  feedback: string;
+}
+
+function blankEditLead(): EditLeadDraft {
+  return { name: '', contact: '', email: '', businessName: '', businessContact: '', post: '', businessNature: '', remarks: '', feedback: '' };
+}
+
 /**
  * Full detail for one call — outcome, payment/complaint specifics, every
  * Lead collected during it, and (right side) this customer's complete
  * call history with the currently-viewed one pinned to the top and
  * highlighted. See docs/modules/sales-person-calls.md.
+ *
+ * Editing mirrors log-call.ts's own create form almost exactly: Outcome may
+ * be switched among Notes/Payment/Commitment (never into/out of Complaint —
+ * see UpdateCallRequest's own doc comment), referrals can be added or have
+ * their own intake fields corrected, and a Complaint call's linked Ticket
+ * content (Title/Description/Category/Priority) is editable in place. Every
+ * edit stamps `editedAtUtc`, shown as a small "(edited)" marker — a
+ * WhatsApp-style notice, not a full audit trail.
  *
  * Reads the route id reactively (not a one-time snapshot) — clicking another
  * entry in the history list navigates to the same route with a different
@@ -48,10 +87,10 @@ function isoDate(date: Date): string {
     @if (notFound()) {
       <div class="rounded-lg border border-slate-200 bg-white p-8 text-center">
         <p class="text-sm text-slate-500">{{ notFound() }}</p>
-        <a routerLink="/app/sales-person/calls" class="mt-3 inline-block text-sm font-medium text-indigo-600 hover:text-indigo-500">← Back to Calls</a>
+        <a [routerLink]="basePath()" class="mt-3 inline-block text-sm font-medium text-indigo-600 hover:text-indigo-500">← Back to Calls</a>
       </div>
     } @else if (call(); as c) {
-      <a routerLink="/app/sales-person/calls" class="text-sm font-medium text-indigo-600 hover:text-indigo-500">← Back to Calls</a>
+      <a [routerLink]="basePath()" class="text-sm font-medium text-indigo-600 hover:text-indigo-500">← Back to Calls</a>
 
       <div class="mt-2 flex flex-wrap items-center gap-2">
         <h1 class="text-lg font-semibold text-slate-900">{{ c.customerCompanyName }}</h1>
@@ -60,7 +99,12 @@ function isoDate(date: Date): string {
         }
         <span class="rounded-full px-2 py-0.5 text-xs font-medium" [class]="outcomeClasses[c.outcome]">{{ outcomeLabels[c.outcome] }}</span>
       </div>
-      <p class="mt-1 text-sm text-slate-500">{{ c.createdAtUtc | date: 'medium' }} · logged by {{ isMine(c) ? 'you' : c.salesPersonDisplayName }}</p>
+      <p class="mt-1 text-sm text-slate-500">
+        {{ c.createdAtUtc | date: 'medium' }} · logged by {{ isMine(c) ? 'you' : c.salesPersonDisplayName }}
+        @if (c.editedAtUtc) {
+          · <span class="text-slate-400" [title]="'Edited ' + (c.editedAtUtc | date: 'medium')">(edited)</span>
+        }
+      </p>
 
       <div class="mt-4 rounded-lg border border-slate-200 bg-white p-4 text-sm">
         <h2 class="text-sm font-semibold text-slate-900">Customer details</h2>
@@ -97,20 +141,30 @@ function isoDate(date: Date): string {
           <div class="rounded-lg border border-slate-200 bg-white p-5">
             <div class="flex items-center justify-between">
               <h2 class="text-sm font-semibold text-slate-900">Outcome</h2>
-              @if (c.outcome !== 'Complaint' && !editing()) {
+              @if (canEdit(c) && !editing()) {
                 <button type="button" (click)="startEdit(c)" class="text-xs font-medium text-indigo-600 hover:text-indigo-500">Edit</button>
               }
             </div>
 
             @if (editing()) {
-              @if (c.outcome === 'Notes') {
+              <div class="mt-2 flex flex-wrap gap-4">
+                @for (option of editableOutcomes(c); track option) {
+                  <label class="flex items-center gap-1.5 text-sm text-slate-700">
+                    <input type="radio" name="edit-outcome" [value]="option" [ngModel]="outcomeDraft" (ngModelChange)="outcomeDraft = $event" [disabled]="c.outcome === 'Complaint'" />
+                    {{ outcomeLabels[option] }}
+                  </label>
+                }
+              </div>
+
+              @if (outcomeDraft === 'Notes') {
                 <textarea
                   rows="3"
+                  placeholder="What happened on this call?"
                   [(ngModel)]="notesDraft"
-                  class="mt-2 w-full rounded-md border border-slate-300 px-3 py-2 text-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                  class="mt-3 w-full rounded-md border border-slate-300 px-3 py-2 text-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"
                 ></textarea>
-              } @else if (c.outcome === 'Payment') {
-                <div class="mt-2 space-y-2.5">
+              } @else if (outcomeDraft === 'Payment') {
+                <div class="mt-3 space-y-2.5 rounded-md border border-slate-200 bg-slate-50 p-3">
                   <select
                     [ngModel]="paymentStatusDraft"
                     (ngModelChange)="onPaymentStatusDraftChange($event)"
@@ -155,8 +209,8 @@ function isoDate(date: Date): string {
                     class="w-full rounded-md border border-slate-300 px-3 py-2 text-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"
                   ></textarea>
                 </div>
-              } @else if (c.outcome === 'Commitment') {
-                <div class="mt-2 space-y-2.5">
+              } @else if (outcomeDraft === 'Commitment') {
+                <div class="mt-3 space-y-2.5 rounded-md border border-slate-200 bg-slate-50 p-3">
                   <div>
                     <label class="block text-xs font-medium text-slate-500">When did they promise it?</label>
                     <div class="mt-1 flex flex-wrap gap-1.5">
@@ -189,7 +243,150 @@ function isoDate(date: Date): string {
                     class="w-full rounded-md border border-slate-300 px-3 py-2 text-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"
                   ></textarea>
                 </div>
+              } @else if (outcomeDraft === 'Complaint') {
+                <div class="mt-3 space-y-2.5">
+                  <input
+                    type="text"
+                    placeholder="Title"
+                    [(ngModel)]="complaintTitleDraft"
+                    class="w-full rounded-md border border-slate-300 px-3 py-2 text-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                  />
+                  <div class="grid grid-cols-2 gap-2.5">
+                    <select
+                      [(ngModel)]="complaintCategoryId"
+                      class="rounded-md border border-slate-300 bg-white px-3 py-2 text-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                    >
+                      @for (category of lookups()?.categories ?? []; track category.id) {
+                        <option [value]="category.id">{{ category.name }}</option>
+                      }
+                    </select>
+                    <select
+                      [(ngModel)]="complaintPriorityId"
+                      class="rounded-md border border-slate-300 bg-white px-3 py-2 text-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                    >
+                      @for (priority of lookups()?.priorities ?? []; track priority.id) {
+                        <option [value]="priority.id">{{ priority.name }}</option>
+                      }
+                    </select>
+                  </div>
+                  <textarea
+                    rows="3"
+                    placeholder="Description"
+                    [(ngModel)]="complaintDescriptionDraft"
+                    class="w-full rounded-md border border-slate-300 px-3 py-2 text-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                  ></textarea>
+                </div>
               }
+
+              <div class="mt-4 border-t border-slate-100 pt-3">
+                <div class="flex items-center justify-between">
+                  <h3 class="text-sm font-medium text-slate-700">Referrals collected on this call</h3>
+                  <button type="button" (click)="addEditLead()" class="rounded-md border border-indigo-300 px-2.5 py-1 text-xs font-medium text-indigo-700 hover:bg-indigo-50">
+                    + Add Referral
+                  </button>
+                </div>
+
+                @if (editLeads().length > 0) {
+                  <div class="mt-2 max-h-[24rem] space-y-2 overflow-y-auto pr-1">
+                    @for (lead of editLeads(); track $index; let i = $index) {
+                      <div [id]="'edit-lead-form-' + i" class="rounded-md border border-slate-200">
+                        @if (activeEditLeadIndex() === i) {
+                          <div class="space-y-2 p-2.5">
+                            <div class="grid grid-cols-2 gap-2">
+                              <input
+                                type="text"
+                                placeholder="Name"
+                                [ngModel]="lead.name"
+                                (ngModelChange)="updateEditLead(i, 'name', $event)"
+                                class="rounded-md border border-slate-300 px-2.5 py-1.5 text-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                              />
+                              <input
+                                type="text"
+                                placeholder="Contact"
+                                [ngModel]="lead.contact"
+                                (ngModelChange)="updateEditLead(i, 'contact', $event)"
+                                class="rounded-md border border-slate-300 px-2.5 py-1.5 text-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                              />
+                            </div>
+                            <input
+                              type="email"
+                              placeholder="Email"
+                              [ngModel]="lead.email"
+                              (ngModelChange)="updateEditLead(i, 'email', $event)"
+                              class="w-full rounded-md border border-slate-300 px-2.5 py-1.5 text-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                            />
+                            <div class="grid grid-cols-2 gap-2">
+                              <input
+                                type="text"
+                                placeholder="Business name"
+                                [ngModel]="lead.businessName"
+                                (ngModelChange)="updateEditLead(i, 'businessName', $event)"
+                                class="rounded-md border border-slate-300 px-2.5 py-1.5 text-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                              />
+                              <input
+                                type="text"
+                                placeholder="Business contact"
+                                [ngModel]="lead.businessContact"
+                                (ngModelChange)="updateEditLead(i, 'businessContact', $event)"
+                                class="rounded-md border border-slate-300 px-2.5 py-1.5 text-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                              />
+                            </div>
+                            <div class="grid grid-cols-2 gap-2">
+                              <input
+                                type="text"
+                                placeholder="Post"
+                                [ngModel]="lead.post"
+                                (ngModelChange)="updateEditLead(i, 'post', $event)"
+                                class="rounded-md border border-slate-300 px-2.5 py-1.5 text-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                              />
+                              <input
+                                type="text"
+                                placeholder="Business nature"
+                                [ngModel]="lead.businessNature"
+                                (ngModelChange)="updateEditLead(i, 'businessNature', $event)"
+                                class="rounded-md border border-slate-300 px-2.5 py-1.5 text-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                              />
+                            </div>
+                            @if (!lead.id) {
+                              <textarea
+                                rows="2"
+                                placeholder="Remarks"
+                                [ngModel]="lead.remarks"
+                                (ngModelChange)="updateEditLead(i, 'remarks', $event)"
+                                class="w-full rounded-md border border-slate-300 px-2.5 py-1.5 text-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                              ></textarea>
+                              <textarea
+                                rows="2"
+                                placeholder="Feedback"
+                                [ngModel]="lead.feedback"
+                                (ngModelChange)="updateEditLead(i, 'feedback', $event)"
+                                class="w-full rounded-md border border-slate-300 px-2.5 py-1.5 text-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                              ></textarea>
+                            }
+                            <div class="flex justify-end">
+                              @if (!lead.id) {
+                                <button type="button" (click)="removeEditLead(i)" class="text-xs font-medium text-red-600 hover:text-red-700">Remove this referral</button>
+                              } @else {
+                                <button type="button" (click)="activeEditLeadIndex.set(null)" class="text-xs font-medium text-slate-500 hover:text-slate-700">Done</button>
+                              }
+                            </div>
+                          </div>
+                        } @else {
+                          <button type="button" (click)="activeEditLeadIndex.set(i)" class="flex w-full items-center justify-between px-3 py-2 text-left text-sm hover:bg-slate-50">
+                            <span class="font-medium text-slate-800">{{ lead.name || 'Untitled lead' }}{{ lead.businessName ? ' — ' + lead.businessName : '' }}</span>
+                            @if (!lead.id) {
+                              <span class="text-xs font-medium text-indigo-500">New</span>
+                            }
+                          </button>
+                        }
+                      </div>
+                    }
+                  </div>
+                } @else {
+                  <p class="mt-2 text-sm text-slate-500">None yet.</p>
+                }
+              </div>
+
               @if (editError()) {
                 <p class="mt-2 text-sm text-red-600" role="alert">{{ editError() }}</p>
               }
@@ -198,7 +395,7 @@ function isoDate(date: Date): string {
                 <button
                   type="button"
                   (click)="saveEdit(c)"
-                  [disabled]="saving()"
+                  [disabled]="saving() || !canSaveEdit()"
                   class="rounded-md bg-indigo-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-indigo-500 disabled:opacity-50"
                 >
                   {{ saving() ? 'Saving…' : 'Save' }}
@@ -210,7 +407,7 @@ function isoDate(date: Date): string {
               @if (c.isFollowUp) {
                 <p class="mt-2 text-xs text-sky-700">
                   Follow-up for the
-                  <a [routerLink]="['/app/sales-person/calls', c.followUpForCallId]" class="font-medium underline hover:no-underline">
+                  <a [routerLink]="[basePath(), c.followUpForCallId]" class="font-medium underline hover:no-underline">
                     {{ c.followUpForCallCreatedAtUtc | date: 'mediumDate' }}
                   </a>
                   call.
@@ -237,7 +434,7 @@ function isoDate(date: Date): string {
                   <ul class="mt-1.5 space-y-1">
                     @for (followUp of c.followUpCalls; track followUp.callId) {
                       <li class="text-sm">
-                        <a [routerLink]="['/app/sales-person/calls', followUp.callId]" class="font-medium text-indigo-600 hover:text-indigo-500">
+                        <a [routerLink]="[basePath(), followUp.callId]" class="font-medium text-indigo-600 hover:text-indigo-500">
                           {{ followUp.createdAtUtc | date: 'medium' }}
                         </a>
                         <span class="text-slate-500"> by {{ isMine(followUp) ? 'you' : followUp.salesPersonDisplayName }}</span>
@@ -261,6 +458,9 @@ function isoDate(date: Date): string {
                   — <span class="font-medium text-slate-800">{{ c.ticketNumber }}</span>
                 }
               </p>
+              @if (c.notes) {
+                <p class="mt-1 whitespace-pre-wrap text-sm text-slate-600">{{ c.notes }}</p>
+              }
             }
           </div>
 
@@ -268,7 +468,7 @@ function isoDate(date: Date): string {
             <h2 class="border-b border-slate-100 p-4 text-sm font-semibold text-slate-900">Referrals collected ({{ c.leads.length }})</h2>
             <div class="divide-y divide-slate-100">
               @for (lead of c.leads; track lead.id) {
-                <a [routerLink]="['/app/sales-person/leads', lead.id]" class="block p-4 hover:bg-slate-50">
+                <a [routerLink]="[leadsBasePath(), lead.id]" class="block p-4 hover:bg-slate-50">
                   <div class="flex flex-wrap items-center justify-between gap-2">
                     <span class="font-medium text-slate-900">{{ lead.name }}</span>
                     @if (lead.currentCategory; as category) {
@@ -306,7 +506,7 @@ function isoDate(date: Date): string {
                   }
                 </div>
               } @else {
-                <a [routerLink]="['/app/sales-person/calls', past.id]" class="block px-3 py-2.5 text-sm hover:bg-slate-50">
+                <a [routerLink]="[basePath(), past.id]" class="block px-3 py-2.5 text-sm hover:bg-slate-50">
                   <span class="font-medium text-slate-700">{{ past.outcome }}</span>
                   <span class="text-xs text-slate-400"> · {{ past.createdAtUtc | date: 'medium' }} · by {{ isMine(past) ? 'you' : past.salesPersonDisplayName }}</span>
                   @if (past.previewText) {
@@ -334,8 +534,17 @@ export class CallDetailPage {
 
   private readonly route = inject(ActivatedRoute);
   private readonly salesPersonService = inject(SalesPersonService);
+  private readonly adminService = inject(AdminService);
+  private readonly ticketsService = inject(TicketsService);
   private readonly authService = inject(AuthService);
   private readonly destroyRef = inject(DestroyRef);
+  private readonly elementRef = inject(ElementRef<HTMLElement>);
+
+  /** Same shared component mounted at both /app/admin/calls/:id and /app/sales-person/calls/:id — see calls.ts's own isAdmin computed. Admin's GET/PUT never carry PaymentDetail (see AdminService.getCall/updateCall) — canEdit() hides the Edit button for a Payment-outcome call when viewed as Admin. */
+  protected readonly isAdmin = computed(() => this.authService.currentUser()?.roles.includes(ROLE_ADMIN) ?? false);
+  /** See leads-list.ts's own copy of this pattern. */
+  protected readonly basePath = computed(() => (this.isAdmin() ? '/app/admin/calls' : '/app/sales-person/calls'));
+  protected readonly leadsBasePath = computed(() => (this.isAdmin() ? '/app/admin/leads' : '/app/sales-person/leads'));
 
   protected readonly call = signal<CallDetailWithPayment | null>(null);
   protected readonly notFound = signal<string | null>(null);
@@ -344,6 +553,7 @@ export class CallDetailPage {
   protected readonly editing = signal(false);
   protected readonly saving = signal(false);
   protected readonly editError = signal<string | null>(null);
+  protected outcomeDraft: CallOutcome = 'Notes';
   protected notesDraft = '';
   protected paymentStatusDraft: PaymentCallStatus = 'Cleared';
   protected paymentAmountDraft: number | null = null;
@@ -353,6 +563,14 @@ export class CallDetailPage {
   protected commitmentPromisedDateDraft = '';
   protected commitmentReferralRangeDraft = '';
   protected commitmentRemarksDraft = '';
+  protected complaintTitleDraft = '';
+  protected complaintDescriptionDraft = '';
+  protected complaintCategoryId: number | null = null;
+  protected complaintPriorityId: number | null = null;
+  protected readonly lookups = signal<TicketLookups | null>(null);
+
+  protected readonly editLeads = signal<EditLeadDraft[]>([]);
+  protected readonly activeEditLeadIndex = signal<number | null>(null);
 
   /** The currently-viewed call pinned to the top, regardless of its date, so it's always immediately visible — the rest stay in the usual newest-first order. */
   protected readonly history = computed(() => {
@@ -369,7 +587,10 @@ export class CallDetailPage {
       .pipe(
         map((params) => params.get('id')!),
         distinctUntilChanged(),
-        switchMap((id) => this.salesPersonService.getCall(id).pipe(catchError((error: HttpErrorResponse) => of(error)))),
+        switchMap((id) => {
+          const call$ = this.isAdmin() ? this.adminService.getCall(id) : this.salesPersonService.getCall(id);
+          return call$.pipe(catchError((error: HttpErrorResponse) => of(error)));
+        }),
         takeUntilDestroyed(this.destroyRef),
       )
       .subscribe((result) => {
@@ -379,10 +600,22 @@ export class CallDetailPage {
         }
         this.notFound.set(null);
         this.call.set(result);
-        this.salesPersonService
-          .getCalls({ customerUserId: result.customerUserId, page: 1, pageSize: 20 })
-          .subscribe((page) => this.rawHistory.set(page.items));
+        const history$ = this.isAdmin()
+          ? this.adminService.getCalls({ customerUserId: result.customerUserId, page: 1, pageSize: 20 })
+          : this.salesPersonService.getCalls({ customerUserId: result.customerUserId, page: 1, pageSize: 20 });
+        history$.subscribe((page) => this.rawHistory.set(page.items));
       });
+  }
+
+  /** Hides Edit entirely for a Payment-outcome call viewed as Admin — Admin's GET never carries PaymentDetail, so there's nothing valid to edit, and the backend rejects it outright anyway. */
+  protected canEdit(c: CallDetailWithPayment): boolean {
+    return !(this.isAdmin() && c.outcome === 'Payment');
+  }
+
+  /** A Complaint call is locked to Complaint (its Ticket is its own independent record — see UpdateCallRequest's own doc comment); Admin never gets Payment as an option since they can't see/edit PaymentDetail at all. */
+  protected editableOutcomes(c: CallDetailWithPayment): CallOutcome[] {
+    if (c.outcome === 'Complaint') return ['Complaint'];
+    return this.isAdmin() ? ['Notes', 'Commitment'] : ['Notes', 'Payment', 'Commitment'];
   }
 
   /** Loosely typed on purpose — used for both CallSummary rows and CallFollowUpSummary entries, which share this one field. */
@@ -391,6 +624,7 @@ export class CallDetailPage {
   }
 
   protected startEdit(c: CallDetailWithPayment): void {
+    this.outcomeDraft = c.outcome;
     this.notesDraft = c.notes ?? '';
     this.paymentStatusDraft = c.paymentDetail?.status ?? 'Cleared';
     this.paymentAmountDraft = c.paymentDetail?.amountCleared ?? null;
@@ -400,6 +634,36 @@ export class CallDetailPage {
     this.commitmentPromisedDateDraft = c.commitmentDetail?.promisedDateUtc.slice(0, 10) ?? '';
     this.commitmentReferralRangeDraft = c.commitmentDetail?.referralCountRange ?? '';
     this.commitmentRemarksDraft = c.commitmentDetail?.remarks ?? '';
+    this.editLeads.set(
+      c.leads.map((l) => ({
+        id: l.id,
+        name: l.name,
+        contact: l.contact,
+        email: l.email ?? '',
+        businessName: l.businessName ?? '',
+        businessContact: l.businessContact ?? '',
+        post: l.post ?? '',
+        businessNature: l.businessNature ?? '',
+        remarks: '',
+        feedback: '',
+      })),
+    );
+    this.activeEditLeadIndex.set(null);
+
+    if (c.outcome === 'Complaint') {
+      this.complaintTitleDraft = c.complaintTitle ?? '';
+      this.complaintDescriptionDraft = c.complaintDescription ?? '';
+      this.complaintCategoryId = c.complaintCategoryId;
+      this.complaintPriorityId = c.complaintPriorityId;
+    }
+    if (!this.lookups()) {
+      this.ticketsService.getLookups().subscribe((lookups) => {
+        this.lookups.set(lookups);
+        this.complaintCategoryId ??= lookups.categories[0]?.id ?? null;
+        this.complaintPriorityId ??= lookups.priorities[0]?.id ?? null;
+      });
+    }
+
     this.editError.set(null);
     this.editing.set(true);
   }
@@ -422,33 +686,92 @@ export class CallDetailPage {
     this.commitmentPromisedDateDraft = isoDate(new Date(Date.now() + daysFromNow * 24 * 60 * 60 * 1000));
   }
 
+  protected addEditLead(): void {
+    this.editLeads.update((list) => [...list, blankEditLead()]);
+    this.activeEditLeadIndex.set(this.editLeads().length - 1);
+    queueMicrotask(() => {
+      this.elementRef.nativeElement.querySelector(`#edit-lead-form-${this.editLeads().length - 1}`)?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    });
+  }
+
+  /** Only a brand-new (no id) row can be removed — an existing Lead is never deleted from here, see UpdateCallLeadRequest's own doc comment. */
+  protected removeEditLead(index: number): void {
+    if (this.editLeads()[index]?.id) return;
+    this.editLeads.update((list) => list.filter((_, i) => i !== index));
+    this.activeEditLeadIndex.set(null);
+  }
+
+  protected updateEditLead<K extends keyof EditLeadDraft>(index: number, field: K, value: EditLeadDraft[K]): void {
+    this.editLeads.update((list) => list.map((lead, i) => (i === index ? { ...lead, [field]: value } : lead)));
+  }
+
+  protected canSaveEdit(): boolean {
+    if (this.outcomeDraft === 'Notes') return this.notesDraft.trim().length > 0;
+    if (this.outcomeDraft === 'Payment') return !!this.paymentStatusDraft;
+    if (this.outcomeDraft === 'Commitment') {
+      return this.commitmentPromisedDateDraft.trim().length > 0 && this.commitmentReferralRangeDraft.trim().length > 0;
+    }
+    if (this.outcomeDraft === 'Complaint') {
+      return this.complaintTitleDraft.trim().length > 0 && this.complaintDescriptionDraft.trim().length > 0 && !!this.complaintCategoryId && !!this.complaintPriorityId;
+    }
+    return false;
+  }
+
   protected saveEdit(c: CallDetailWithPayment): void {
-    if (this.saving()) return;
+    if (this.saving() || !this.canSaveEdit()) return;
 
     this.saving.set(true);
     this.editError.set(null);
-    const request =
-      c.outcome === 'Notes'
-        ? { notes: this.notesDraft.trim() }
-        : c.outcome === 'Payment'
-          ? {
-              paymentDetail: {
-                status: this.paymentStatusDraft,
-                amountCleared: this.paymentAmountDraft,
-                dueDateUtc: this.paymentStatusDraft !== 'Cleared' ? this.paymentDueDateDraft || null : null,
-                amountDue: this.paymentStatusDraft !== 'Cleared' ? this.paymentAmountDueDraft : null,
-                remarks: this.paymentRemarksDraft.trim() || null,
-              },
-            }
-          : {
-              commitmentDetail: {
-                promisedDateUtc: this.commitmentPromisedDateDraft,
-                referralCountRange: this.commitmentReferralRangeDraft.trim(),
-                remarks: this.commitmentRemarksDraft.trim() || null,
-              },
-            };
 
-    this.salesPersonService.updateCall(c.id, request).subscribe({
+    const outcome = this.outcomeDraft;
+    const leads: UpdateCallLeadRequest[] = this.editLeads().map((lead) => ({
+      id: lead.id,
+      name: lead.name.trim(),
+      contact: lead.contact.trim(),
+      email: lead.email.trim() || undefined,
+      businessName: lead.businessName.trim() || undefined,
+      businessContact: lead.businessContact.trim() || undefined,
+      post: lead.post.trim() || undefined,
+      businessNature: lead.businessNature.trim() || undefined,
+      remarks: lead.remarks.trim() || undefined,
+      feedback: lead.feedback.trim() || undefined,
+    }));
+
+    const request: UpdateCallRequest = {
+      outcome,
+      leads,
+      notes: outcome === 'Notes' ? this.notesDraft.trim() : outcome === 'Complaint' ? this.notesDraft.trim() || null : undefined,
+      paymentDetail:
+        outcome === 'Payment'
+          ? {
+              status: this.paymentStatusDraft,
+              amountCleared: this.paymentAmountDraft,
+              dueDateUtc: this.paymentStatusDraft !== 'Cleared' ? this.paymentDueDateDraft || null : null,
+              amountDue: this.paymentStatusDraft !== 'Cleared' ? this.paymentAmountDueDraft : null,
+              remarks: this.paymentRemarksDraft.trim() || null,
+            }
+          : undefined,
+      commitmentDetail:
+        outcome === 'Commitment'
+          ? {
+              promisedDateUtc: this.commitmentPromisedDateDraft,
+              referralCountRange: this.commitmentReferralRangeDraft.trim(),
+              remarks: this.commitmentRemarksDraft.trim() || null,
+            }
+          : undefined,
+      complaint:
+        outcome === 'Complaint'
+          ? {
+              title: this.complaintTitleDraft.trim(),
+              description: this.complaintDescriptionDraft.trim(),
+              categoryId: this.complaintCategoryId!,
+              priorityId: this.complaintPriorityId!,
+            }
+          : undefined,
+    };
+
+    const save$ = this.isAdmin() ? this.adminService.updateCall(c.id, request) : this.salesPersonService.updateCall(c.id, request);
+    save$.subscribe({
       next: (updated) => {
         this.saving.set(false);
         this.editing.set(false);

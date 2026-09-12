@@ -2,7 +2,7 @@ import { HttpClient, HttpParams } from '@angular/common/http';
 import { Injectable, inject } from '@angular/core';
 import { Observable } from 'rxjs';
 import { environment } from '../../../environments/environment';
-import { CallSummary, CustomerDirectoryEntry, PaymentFollowUpCustomer, PaymentFollowUpSummary } from '../sales-person/models';
+import { CallDetailWithPayment, CallSummary, CustomerDirectoryEntry, PaymentFollowUpCustomer, PaymentFollowUpSummary, UpdateCallRequest } from '../sales-person/models';
 import { CallFilter } from '../sales-person/sales-person.service';
 import {
   AddCompanyUserRequest,
@@ -19,6 +19,7 @@ import {
   DashboardStats,
   DeveloperWorkload,
   EmployeeProfileDetail,
+  ImplementatorWorkload,
   LookupValue,
   PagedResult,
   PersonDetail,
@@ -60,6 +61,14 @@ export class AdminService {
     if (dateFrom) params = params.set('dateFrom', dateFrom);
     if (dateTo) params = params.set('dateTo', dateTo);
     return this.http.get<SalesPersonWorkload[]>(`${BASE}/dashboard/sales`, { params });
+  }
+
+  /** Admin Dashboard's Implementators drill-down cards — every Implementator's task-triage activity within the given date range. */
+  getImplementatorWorkload(dateFrom?: string, dateTo?: string): Observable<ImplementatorWorkload[]> {
+    let params = new HttpParams();
+    if (dateFrom) params = params.set('dateFrom', dateFrom);
+    if (dateTo) params = params.set('dateTo', dateTo);
+    return this.http.get<ImplementatorWorkload[]>(`${BASE}/dashboard/implementators`, { params });
   }
 
   /** Admin Dashboard's Payments card — company-wide, a deliberate exception to the usual Sales-Person-private payment rule. */
@@ -107,8 +116,23 @@ export class AdminService {
     return this.http.get<CustomerDirectoryEntry[]>(`${BASE}/customers/directory`);
   }
 
+  /** Admin-safe — the response is typed as CallDetailWithPayment for convenience (same base shape), but the backend never actually sends paymentDetail/follow-up fields to Admin; call-detail.ts's template only reads those inside an `outcome === 'Payment'` branch it hides for Admin. */
+  getCall(id: string): Observable<CallDetailWithPayment> {
+    return this.http.get<CallDetailWithPayment>(`${BASE}/calls/${id}`);
+  }
+
+  /** Notes/Commitment only — a Payment-outcome call is rejected server-side (Forbidden), since Admin never sees PaymentDetail at all. */
+  updateCall(id: string, request: UpdateCallRequest): Observable<CallDetailWithPayment> {
+    return this.http.put<CallDetailWithPayment>(`${BASE}/calls/${id}`, request);
+  }
+
   createParty(request: CreatePartyRequest): Observable<PersonSummary> {
     return this.http.post<PersonSummary>(`${BASE}/parties`, request);
+  }
+
+  /** Turns a Party's own ability to file complaints/subcomplaints on or off. */
+  setPartyComplaintPermission(partyId: string, canSelfFileComplaints: boolean): Observable<void> {
+    return this.http.put<void>(`${BASE}/parties/${partyId}/complaint-permission`, { canSelfFileComplaints });
   }
 
   createDeveloper(request: CreateDeveloperRequest): Observable<PersonSummary> {

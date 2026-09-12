@@ -35,7 +35,7 @@ export interface DeveloperWorkload {
   pendingAmount: number;
 }
 
-/** One sales person's workload card on the Admin Dashboard's Sales drill-down. */
+/** One sales person's workload card on the Admin Dashboard's Sales drill-down. referralCallsCount: calls logged to existing customers in range. leadCallsCount: follow-up calls made to referred people in range. dealsCount/leadCallsCount together are the "Total Active Sale" ratio (e.g. "2/4"). */
 export interface SalesPersonWorkload {
   salesPersonUserId: string;
   salesPersonDisplayName: string;
@@ -43,6 +43,16 @@ export interface SalesPersonWorkload {
   dealsCount: number;
   warmToCoolCount: number;
   pendingAmount: number;
+  referralCallsCount: number;
+  leadCallsCount: number;
+  referralsCollectedCount: number;
+}
+
+/** One implementator's task-triage activity card on the Admin Dashboard's Implementators drill-down. triagedCount: every Assign/Resolve/Reject/mark-as-Sale action they performed in range. */
+export interface ImplementatorWorkload {
+  implementatorUserId: string;
+  implementatorDisplayName: string;
+  triagedCount: number;
 }
 
 export interface PersonSummary {
@@ -125,6 +135,12 @@ export interface CreatePartyRequest {
   companyId?: string;
   /** Optional — an existing, currently-unowned customer Branch's id (typically pre-created via the Companies page — see company-management.md). This Party becomes its owner directly; the branch field above is ignored. Takes priority over companyId. */
   branchId?: string;
+  /** Whether this Party may file complaints/subcomplaints themselves. Defaults true (the normal case) — set false for a Party who should only ever have complaints filed on their behalf. */
+  canSelfFileComplaints?: boolean;
+}
+
+export interface SetPartyComplaintPermissionRequest {
+  canSelfFileComplaints: boolean;
 }
 
 export interface CreateStaffRequest {
@@ -220,6 +236,8 @@ export interface PersonDetail {
   phoneNumber: string | null;
   openTicketCount: number;
   totalTicketCount: number;
+  /** Party-only — whether they may file complaints/subcomplaints themselves. Meaningless (always true) for a staff role. */
+  canSelfFileComplaints: boolean;
   /** Internal-staff (Developer/SalesPerson/Implementator) employee profile — null for a Party. */
   employeeProfile: EmployeeProfileDetail | null;
 }

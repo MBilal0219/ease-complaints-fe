@@ -27,6 +27,7 @@ import { Pagination } from '../../../shared/ui/pagination/pagination';
 import { PasswordInput } from '../../../shared/ui/password-input/password-input';
 import { StaffFormModal } from '../staff-form-modal/staff-form-modal';
 import { StaffRole } from '../../../core/admin/admin.service';
+import { Toggle } from '../../../shared/ui/toggle/toggle';
 
 type PersonRole = 'Party' | 'Developer' | 'SalesPerson' | 'Implementator';
 
@@ -55,7 +56,7 @@ function isoDate(date: Date): string {
 /** Admin's profile view of one Party or Developer — which one is set by the route (`data.personRole`). */
 @Component({
   selector: 'app-person-detail',
-  imports: [DatePipe, FormsModule, RouterLink, Pagination, ConfirmDialog, Modal, PasswordInput, StaffFormModal],
+  imports: [DatePipe, FormsModule, RouterLink, Pagination, ConfirmDialog, Modal, PasswordInput, StaffFormModal, Toggle],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     @if (notFound()) {
@@ -156,6 +157,14 @@ function isoDate(date: Date): string {
               <dd class="font-medium text-slate-700">{{ p.phoneNumber ?? '—' }}</dd>
             </div>
           </dl>
+
+          <div class="mt-4 flex items-center justify-between rounded-md border border-slate-200 bg-slate-50 px-3 py-2.5">
+            <div>
+              <p class="text-sm font-medium text-slate-700">Allow this party to add complaints themselves</p>
+              <p class="text-xs text-slate-500">Turn off if complaints should only ever be filed on their behalf.</p>
+            </div>
+            <app-toggle [ngModel]="p.canSelfFileComplaints" (ngModelChange)="toggleSelfFileComplaints(p, $event)" />
+          </div>
         </div>
       }
 
@@ -853,6 +862,21 @@ export class PersonDetailPage implements OnInit {
           this.generatingReport.set(false);
         },
       });
+  }
+
+  protected toggleSelfFileComplaints(person: PersonDetail, canSelfFileComplaints: boolean): void {
+    this.actionPending.set(true);
+    this.actionError.set(null);
+    this.adminService.setPartyComplaintPermission(person.id, canSelfFileComplaints).subscribe({
+      next: () => {
+        this.actionPending.set(false);
+        this.loadPerson();
+      },
+      error: (error: HttpErrorResponse) => {
+        this.actionPending.set(false);
+        this.actionError.set(error.error?.error ?? 'Could not update this setting.');
+      },
+    });
   }
 
   toggleActive(person: PersonDetail): void {

@@ -70,14 +70,32 @@ export interface CreateCallRequest {
   followUpForCallId?: string | null;
 }
 
-/** Narrow edit — only the field matching the call's EXISTING outcome is honored; outcome itself and the referrals collected are immutable after creation. A Complaint-outcome call rejects this entirely (edit the ticket instead). */
+/** One referral on a call being edited — set `id` to update that existing Lead's own intake fields in place; omit it to add a brand-new referral. An existing Lead left out of the list entirely is never deleted (that would destroy its own follow-up history). */
+export interface UpdateCallLeadRequest extends CreateLeadRequest {
+  id?: string;
+}
+
+/**
+ * Editing a logged call — full parity with CreateCallRequest except the
+ * customer itself (immutable). Outcome may switch freely among Notes/
+ * Payment/Commitment (the old detail is discarded, a fresh one created for
+ * whichever's now selected) — but never into or out of Complaint, since
+ * that outcome is backed by a real, independent Ticket with its own
+ * lifecycle. A call whose EXISTING outcome is already Complaint instead
+ * accepts a `complaint` payload that edits the linked Ticket's own Title/
+ * Description/Category/Priority directly.
+ */
 export interface UpdateCallRequest {
-  /** Required when the call's outcome is Notes, must be omitted otherwise. */
+  outcome: CallOutcome;
+  leads: UpdateCallLeadRequest[];
+  /** Required when outcome is Notes, must be omitted otherwise. */
   notes?: string | null;
-  /** Required when the call's outcome is Payment, must be omitted otherwise. */
+  /** Required when outcome is Payment, must be omitted otherwise. */
   paymentDetail?: CreateCallPaymentDetailRequest | null;
-  /** Required when the call's outcome is Commitment, must be omitted otherwise. */
+  /** Required when outcome is Commitment, must be omitted otherwise. */
   commitmentDetail?: CreateCallCommitmentDetailRequest | null;
+  /** Only valid — and required — when the call's EXISTING outcome is already Complaint. */
+  complaint?: CreateTicketRequest | null;
 }
 
 /** List-row shape — a scannable summary, not the full detail. See CallDetail. */
@@ -111,8 +129,15 @@ export interface CallDetail extends CallSummary {
   notes: string | null;
   createdTicketId: string | null;
   ticketNumber: string | null;
+  /** Present only when outcome is Complaint — the linked Ticket's current editable content, for prefilling the edit form. */
+  complaintTitle: string | null;
+  complaintDescription: string | null;
+  complaintCategoryId: number | null;
+  complaintPriorityId: number | null;
   leads: LeadSummary[];
   commitmentDetail: CallCommitmentDetail | null;
+  /** Set (and re-set) every time this call is edited — a WhatsApp-style "(edited)" marker, not a full audit trail. Null until the first edit. */
+  editedAtUtc: string | null;
 }
 
 export interface CallPaymentDetail {

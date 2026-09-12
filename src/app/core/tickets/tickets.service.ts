@@ -2,16 +2,24 @@ import { HttpClient, HttpParams } from '@angular/common/http';
 import { Injectable, inject } from '@angular/core';
 import { Observable } from 'rxjs';
 import {
+  CreateTicketAsImplementatorRequest,
   CreateTicketRequest,
+  CreateTicketTaskRequest,
   DeveloperDashboardStats,
+  EstimateUnit,
+  MarkTicketTaskAsSaleRequest,
   PagedResult,
   PartyDashboardStats,
   PostMessageOutcome,
+  SubmitSubComplaintRequest,
   TicketDto,
   TicketFilter,
   TicketLookups,
+  TicketMessageAudience,
   TicketMessageDto,
   TicketSettings,
+  TicketTaskDto,
+  TicketTaskStatus,
 } from './models';
 
 const TICKETS_BASE = '/api/v1/tickets';
@@ -99,7 +107,8 @@ export class TicketsService {
     return this.http.get<TicketMessageDto[]>(`${TICKETS_BASE}/${ticketId}/messages`);
   }
 
-  postMessage(ticketId: string, body: string, files: File[], outcome?: PostMessageOutcome): Observable<TicketMessageDto> {
+  /** audience: which thread to post into — only meaningful for an Admin/Implementator poster (Party/Developer's own messages are auto-stamped server-side regardless of what's sent here). */
+  postMessage(ticketId: string, body: string, files: File[], outcome?: PostMessageOutcome, audience?: TicketMessageAudience): Observable<TicketMessageDto> {
     const form = new FormData();
     if (body) {
       form.set('Body', body);
@@ -113,7 +122,86 @@ export class TicketsService {
       if (outcome.saleAmount != null) form.set('SaleAmount', String(outcome.saleAmount));
       if (outcome.reassignedToDeveloperId) form.set('ReassignedToDeveloperId', outcome.reassignedToDeveloperId);
     }
+    if (audience) {
+      form.set('Audience', audience);
+    }
     return this.http.post<TicketMessageDto>(`${TICKETS_BASE}/${ticketId}/messages`, form);
+  }
+
+  /** The Implementator/Admin's own "Create Complaint" — with an existing Party attached, or none at all. */
+  createAsImplementator(request: CreateTicketAsImplementatorRequest): Observable<TicketDto> {
+    return this.http.post<TicketDto>('/api/v1/admin/tickets', request);
+  }
+
+  // ---- Subcomplaints/tasks — see TicketTaskDto ----
+
+  getTasksAsAdmin(ticketId: string): Observable<TicketTaskDto[]> {
+    return this.http.get<TicketTaskDto[]>(`/api/v1/admin/tickets/${ticketId}/tasks`);
+  }
+
+  getTasksAsDeveloper(ticketId: string): Observable<TicketTaskDto[]> {
+    return this.http.get<TicketTaskDto[]>(`/api/v1/developer/tickets/${ticketId}/tasks`);
+  }
+
+  /** The Party's own "submit a subcomplaint" action — Title required, own ticket only. Every subcomplaint is Party-authored; the Implementator/Admin only triages it. */
+  submitSubComplaint(ticketId: string, request: SubmitSubComplaintRequest): Observable<TicketTaskDto> {
+    const form = new FormData();
+    form.set('Title', request.title);
+    form.set('Description', request.description);
+    for (const file of request.files ?? []) form.append('Files', file, file.name);
+    return this.http.post<TicketTaskDto>(`/api/v1/user/tickets/${ticketId}/tasks`, form);
+  }
+
+  addTask(ticketId: string, request: CreateTicketTaskRequest): Observable<TicketTaskDto> {
+    const form = new FormData();
+    if (request.title) form.set('Title', request.title);
+    form.set('Description', request.description);
+    if (request.estimateValue != null) form.set('EstimateValue', String(request.estimateValue));
+    if (request.estimateUnit) form.set('EstimateUnit', request.estimateUnit);
+    if (request.amount != null) form.set('Amount', String(request.amount));
+    for (const file of request.files ?? []) form.append('Files', file, file.name);
+    return this.http.post<TicketTaskDto>(`/api/v1/admin/tickets/${ticketId}/tasks`, form);
+  }
+
+  assignTask(ticketId: string, taskId: string, developerId: string): Observable<TicketTaskDto> {
+    return this.http.post<TicketTaskDto>(`/api/v1/admin/tickets/${ticketId}/tasks/${taskId}/assign`, { developerId });
+  }
+
+  updateTaskStatusAsAdmin(ticketId: string, taskId: string, status: TicketTaskStatus, reason?: string, files?: File[]): Observable<TicketTaskDto> {
+    return this.http.patch<TicketTaskDto>(`/api/v1/admin/tickets/${ticketId}/tasks/${taskId}/status`, this.buildStatusForm(status, reason, files));
+  }
+
+  updateTaskStatusAsDeveloper(ticketId: string, taskId: string, status: TicketTaskStatus, reason?: string, files?: File[]): Observable<TicketTaskDto> {
+    return this.http.patch<TicketTaskDto>(`/api/v1/developer/tickets/${ticketId}/tasks/${taskId}/status`, this.buildStatusForm(status, reason, files));
+  }
+
+  /** The client's request turned out to be a paid feature/requirement — a lightweight per-task outcome, not the ticket-level Deal subsystem. */
+  markTaskAsSale(ticketId: string, taskId: string, request: MarkTicketTaskAsSaleRequest): Observable<TicketTaskDto> {
+    const form = new FormData();
+    form.set('Amount', String(request.amount));
+    form.set('Description', request.description);
+    for (const file of request.files ?? []) form.append('Files', file, file.name);
+    return this.http.post<TicketTaskDto>(`/api/v1/admin/tickets/${ticketId}/tasks/${taskId}/sale`, form);
+  }
+
+  reopenTask(ticketId: string, taskId: string, reason: string): Observable<TicketTaskDto> {
+    return this.http.post<TicketTaskDto>(`/api/v1/admin/tickets/${ticketId}/tasks/${taskId}/reopen`, { reason });
+  }
+
+  setTaskEstimate(ticketId: string, taskId: string, value: number, unit: EstimateUnit): Observable<TicketTaskDto> {
+    return this.http.put<TicketTaskDto>(`/api/v1/admin/tickets/${ticketId}/tasks/${taskId}/estimate`, { value, unit });
+  }
+
+  setTaskAmount(ticketId: string, taskId: string, amount: number | null): Observable<TicketTaskDto> {
+    return this.http.put<TicketTaskDto>(`/api/v1/admin/tickets/${ticketId}/tasks/${taskId}/amount`, { amount });
+  }
+
+  private buildStatusForm(status: TicketTaskStatus, reason?: string, files?: File[]): FormData {
+    const form = new FormData();
+    form.set('Status', status);
+    if (reason) form.set('Reason', reason);
+    for (const file of files ?? []) form.append('Files', file, file.name);
+    return form;
   }
 
   /** Admin-only — whether a Party can see per-message/total Sale amounts on their own complaints. */

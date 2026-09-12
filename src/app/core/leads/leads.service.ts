@@ -5,7 +5,7 @@ import { environment } from '../../../environments/environment';
 import { PagedResult } from '../admin/models';
 import { AuthService } from '../auth/auth.service';
 import { ROLE_ADMIN } from '../auth/models';
-import { CreateFollowUpRequest, CreateLeadRequest, LeadCategory, LeadDetail, LeadSource, LeadSummary } from './models';
+import { CreateFollowUpRequest, CreateLeadRequest, LeadCategory, LeadDetail, LeadSource, LeadSummary, UpdateLeadRequest } from './models';
 
 export interface LeadFilter {
   source?: LeadSource;
@@ -79,5 +79,10 @@ export class LeadsService {
   /** Sets/clears the agreement amount directly — the only way to change it once the lead is converted (no more follow-ups possible then). */
   updateAgreementAmount(leadId: string, agreementAmount: number | null): Observable<LeadDetail> {
     return this.http.put<LeadDetail>(`${this.base}/${leadId}/agreement-amount`, { agreementAmount });
+  }
+
+  /** Edits the Lead's own intake/contact fields — see UpdateLeadRequest's own doc comment. */
+  updateLead(leadId: string, request: UpdateLeadRequest): Observable<LeadDetail> {
+    return this.http.put<LeadDetail>(`${this.base}/${leadId}`, request);
   }
 }

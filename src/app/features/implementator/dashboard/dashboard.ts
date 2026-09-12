@@ -7,7 +7,6 @@ import { DashboardStats, DeveloperWorkload } from '../../../core/admin/models';
 import { RealtimeService } from '../../../core/realtime/realtime.service';
 import { PENDING_STATUS_QUERY_VALUE } from '../../../core/tickets/models';
 import { DeveloperWorkloadModal } from '../../admin/developer-workload-modal/developer-workload-modal';
-import { StaffMissingIdCardModal } from '../../admin/staff-missing-id-card-modal/staff-missing-id-card-modal';
 
 interface StatCard {
   label: string;
@@ -57,7 +56,7 @@ function thirtyDaysAgo(): string {
  */
 @Component({
   selector: 'app-implementator-dashboard',
-  imports: [RouterLink, DeveloperWorkloadModal, StaffMissingIdCardModal],
+  imports: [RouterLink, DeveloperWorkloadModal],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     <h1 class="text-lg font-semibold text-slate-900">Dashboard</h1>
@@ -75,16 +74,44 @@ function thirtyDaysAgo(): string {
         <p class="mt-1 text-sm text-slate-600">Total developers</p>
         <p class="mt-2 text-sm text-slate-600">Pending tasks: <span class="font-medium text-amber-700">{{ totalPendingTasks() }}</span></p>
       </button>
+    </div>
 
-      <button
-        type="button"
-        (click)="showMissingIdCard.set(true)"
-        class="block rounded-lg border border-amber-200 bg-white p-4 text-left transition-shadow hover:shadow-md"
-      >
-        <p class="text-xs font-medium text-slate-500">Missing ID Card</p>
-        <p class="mt-2 inline-flex rounded-md bg-amber-50 px-2 py-1 text-2xl font-semibold text-amber-700">{{ stats()?.missingIdCardCount ?? 0 }}</p>
-        <p class="mt-2 text-sm text-slate-600">Staff without a complete ID card</p>
-      </button>
+    <h2 class="mt-8 text-xs font-semibold uppercase tracking-wide text-slate-500">Developer workload — last 30 days</h2>
+    <div class="mt-2 overflow-hidden rounded-lg border border-slate-200 bg-white">
+      @if (workloadLoading()) {
+        <p class="p-4 text-sm text-slate-500" role="status">Loading…</p>
+      } @else {
+        <div class="overflow-x-auto">
+          <table class="w-full text-left text-sm">
+            <thead class="bg-slate-50 text-xs uppercase tracking-wide text-slate-500">
+              <tr>
+                <th class="px-4 py-2.5">Developer</th>
+                <th class="px-4 py-2.5">Assigned complaints</th>
+                <th class="px-4 py-2.5">Assigned parties</th>
+                <th class="px-4 py-2.5">Pending tasks</th>
+                <th class="px-4 py-2.5">Completed tasks</th>
+                <th class="px-4 py-2.5">Total tasks</th>
+              </tr>
+            </thead>
+            <tbody class="divide-y divide-slate-100">
+              @for (row of developerWorkload(); track row.developerId) {
+                <tr>
+                  <td class="px-4 py-2.5 font-medium text-slate-900">{{ row.developerDisplayName }}</td>
+                  <td class="px-4 py-2.5 text-slate-600">{{ row.totalTasks }}</td>
+                  <td class="px-4 py-2.5 text-slate-600">{{ row.totalParties }}</td>
+                  <td class="px-4 py-2.5 text-amber-700">{{ row.pendingTasks }}</td>
+                  <td class="px-4 py-2.5 text-emerald-700">{{ row.completedTasks }}</td>
+                  <td class="px-4 py-2.5 text-slate-600">{{ row.totalTasks }}</td>
+                </tr>
+              } @empty {
+                <tr>
+                  <td colspan="6" class="px-4 py-8 text-center text-slate-500">No developers yet.</td>
+                </tr>
+              }
+            </tbody>
+          </table>
+        </div>
+      }
     </div>
 
     <h2 class="mt-8 text-xs font-semibold uppercase tracking-wide text-slate-500">Everything else</h2>
@@ -117,9 +144,9 @@ function thirtyDaysAgo(): string {
       [dateFrom]="rangeFrom"
       [dateTo]="rangeTo"
       [detailBase]="null"
+      [hidePendingAmount]="true"
       (closed)="showDevelopers.set(false)"
     />
-    <app-staff-missing-id-card-modal [open]="showMissingIdCard()" [linkBase]="null" (closed)="showMissingIdCard.set(false)" />
   `,
 })
 export class ImplementatorDashboardPage implements OnInit {
@@ -135,9 +162,9 @@ export class ImplementatorDashboardPage implements OnInit {
   protected readonly rangeTo = isoDate(new Date());
 
   protected readonly showDevelopers = signal(false);
-  protected readonly showMissingIdCard = signal(false);
 
-  private readonly developerWorkload = signal<DeveloperWorkload[]>([]);
+  protected readonly developerWorkload = signal<DeveloperWorkload[]>([]);
+  protected readonly workloadLoading = signal(true);
   protected readonly totalPendingTasks = computed(() => this.developerWorkload().reduce((sum, d) => sum + d.pendingTasks, 0));
 
   ngOnInit(): void {
@@ -158,6 +185,7 @@ export class ImplementatorDashboardPage implements OnInit {
       )
       .subscribe((rows) => {
         if (rows) this.developerWorkload.set(rows);
+        this.workloadLoading.set(false);
       });
   }
 }

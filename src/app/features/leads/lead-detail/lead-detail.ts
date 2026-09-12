@@ -251,51 +251,104 @@ function isoDate(date: Date): string {
 
         <div class="space-y-4">
           <div class="rounded-lg border border-slate-200 bg-white p-4 text-sm">
-            <h2 class="text-sm font-semibold text-slate-900">Details</h2>
-            <dl class="mt-3 space-y-2.5">
-              <div class="flex justify-between gap-3">
-                <dt class="text-slate-500">Contact</dt>
-                <dd class="text-right font-medium text-slate-700">{{ l.contact }}</dd>
+            <div class="flex items-center justify-between">
+              <h2 class="text-sm font-semibold text-slate-900">Details</h2>
+              @if (!editingDetails()) {
+                <button type="button" (click)="startEditDetails(l)" class="text-xs font-medium text-indigo-600 hover:text-indigo-500">Edit</button>
+              }
+            </div>
+
+            @if (editingDetails()) {
+              <div class="mt-3 space-y-2.5">
+                <div>
+                  <label class="block text-xs font-medium text-slate-500">Name</label>
+                  <input type="text" [(ngModel)]="nameDraft" class="mt-1 w-full rounded-md border border-slate-300 px-2.5 py-1.5 text-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500" />
+                </div>
+                <div>
+                  <label class="block text-xs font-medium text-slate-500">Contact</label>
+                  <input type="text" [(ngModel)]="contactDraft" class="mt-1 w-full rounded-md border border-slate-300 px-2.5 py-1.5 text-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500" />
+                </div>
+                <div>
+                  <label class="block text-xs font-medium text-slate-500">Email</label>
+                  <input type="email" [(ngModel)]="emailDraft" class="mt-1 w-full rounded-md border border-slate-300 px-2.5 py-1.5 text-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500" />
+                </div>
+                <div>
+                  <label class="block text-xs font-medium text-slate-500">Business</label>
+                  <input type="text" [(ngModel)]="businessNameDraft" class="mt-1 w-full rounded-md border border-slate-300 px-2.5 py-1.5 text-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500" />
+                </div>
+                <div>
+                  <label class="block text-xs font-medium text-slate-500">Business contact</label>
+                  <input type="text" [(ngModel)]="businessContactDraft" class="mt-1 w-full rounded-md border border-slate-300 px-2.5 py-1.5 text-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500" />
+                </div>
+                <div>
+                  <label class="block text-xs font-medium text-slate-500">Post</label>
+                  <input type="text" [(ngModel)]="postDraft" class="mt-1 w-full rounded-md border border-slate-300 px-2.5 py-1.5 text-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500" />
+                </div>
+                <div>
+                  <label class="block text-xs font-medium text-slate-500">Business nature</label>
+                  <input type="text" [(ngModel)]="businessNatureDraft" class="mt-1 w-full rounded-md border border-slate-300 px-2.5 py-1.5 text-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500" />
+                </div>
+                @if (detailsError()) {
+                  <p class="text-sm text-red-600" role="alert">{{ detailsError() }}</p>
+                }
+                <div class="flex justify-end gap-2">
+                  <button type="button" (click)="cancelEditDetails()" class="rounded-md border border-slate-300 px-3 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-50">Cancel</button>
+                  <button
+                    type="button"
+                    (click)="saveDetails()"
+                    [disabled]="savingDetails() || !nameDraft.trim() || !contactDraft.trim()"
+                    class="rounded-md bg-indigo-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-indigo-500 disabled:opacity-50"
+                  >
+                    {{ savingDetails() ? 'Saving…' : 'Save' }}
+                  </button>
+                </div>
               </div>
-              @if (l.email) {
+            } @else {
+              <dl class="mt-3 space-y-2.5">
                 <div class="flex justify-between gap-3">
-                  <dt class="text-slate-500">Email</dt>
-                  <dd class="text-right font-medium text-slate-700">{{ l.email }}</dd>
+                  <dt class="text-slate-500">Contact</dt>
+                  <dd class="text-right font-medium text-slate-700">{{ l.contact }}</dd>
                 </div>
-              }
-              @if (l.businessName) {
+                @if (l.email) {
+                  <div class="flex justify-between gap-3">
+                    <dt class="text-slate-500">Email</dt>
+                    <dd class="text-right font-medium text-slate-700">{{ l.email }}</dd>
+                  </div>
+                }
+                @if (l.businessName) {
+                  <div class="flex justify-between gap-3">
+                    <dt class="text-slate-500">Business</dt>
+                    <dd class="text-right font-medium text-slate-700">{{ l.businessName }}</dd>
+                  </div>
+                }
+                @if (l.businessContact) {
+                  <div class="flex justify-between gap-3">
+                    <dt class="text-slate-500">Business contact</dt>
+                    <dd class="text-right font-medium text-slate-700">{{ l.businessContact }}</dd>
+                  </div>
+                }
+                @if (l.post) {
+                  <div class="flex justify-between gap-3">
+                    <dt class="text-slate-500">Post</dt>
+                    <dd class="text-right font-medium text-slate-700">{{ l.post }}</dd>
+                  </div>
+                }
+                @if (l.businessNature) {
+                  <div class="flex justify-between gap-3">
+                    <dt class="text-slate-500">Business nature</dt>
+                    <dd class="text-right font-medium text-slate-700">{{ l.businessNature }}</dd>
+                  </div>
+                }
                 <div class="flex justify-between gap-3">
-                  <dt class="text-slate-500">Business</dt>
-                  <dd class="text-right font-medium text-slate-700">{{ l.businessName }}</dd>
+                  <dt class="text-slate-500">Added by</dt>
+                  <dd class="text-right font-medium text-slate-700">{{ l.createdByDisplayName }} ({{ l.createdByRole }})</dd>
                 </div>
-              }
-              @if (l.businessContact) {
                 <div class="flex justify-between gap-3">
-                  <dt class="text-slate-500">Business contact</dt>
-                  <dd class="text-right font-medium text-slate-700">{{ l.businessContact }}</dd>
+                  <dt class="text-slate-500">First contacted</dt>
+                  <dd class="text-right font-medium text-slate-700">{{ l.createdAtUtc | date: 'medium' }}</dd>
                 </div>
-              }
-              @if (l.post) {
-                <div class="flex justify-between gap-3">
-                  <dt class="text-slate-500">Post</dt>
-                  <dd class="text-right font-medium text-slate-700">{{ l.post }}</dd>
-                </div>
-              }
-              @if (l.businessNature) {
-                <div class="flex justify-between gap-3">
-                  <dt class="text-slate-500">Business nature</dt>
-                  <dd class="text-right font-medium text-slate-700">{{ l.businessNature }}</dd>
-                </div>
-              }
-              <div class="flex justify-between gap-3">
-                <dt class="text-slate-500">Added by</dt>
-                <dd class="text-right font-medium text-slate-700">{{ l.createdByDisplayName }} ({{ l.createdByRole }})</dd>
-              </div>
-              <div class="flex justify-between gap-3">
-                <dt class="text-slate-500">First contacted</dt>
-                <dd class="text-right font-medium text-slate-700">{{ l.createdAtUtc | date: 'medium' }}</dd>
-              </div>
-            </dl>
+              </dl>
+            }
           </div>
 
           @if (l.pendingInvitation; as invitation) {
@@ -429,6 +482,17 @@ export class LeadDetailPage implements OnInit {
   protected readonly notFound = signal<string | null>(null);
   protected readonly saving = signal(false);
   protected readonly followUpError = signal<string | null>(null);
+
+  protected readonly editingDetails = signal(false);
+  protected readonly savingDetails = signal(false);
+  protected readonly detailsError = signal<string | null>(null);
+  protected nameDraft = '';
+  protected contactDraft = '';
+  protected emailDraft = '';
+  protected businessNameDraft = '';
+  protected businessContactDraft = '';
+  protected postDraft = '';
+  protected businessNatureDraft = '';
 
   protected followUpCategory: LeadCategory = 'Cool';
   protected followUpStatus: LeadFollowUpStatus = 'InProgress';
@@ -642,6 +706,51 @@ export class LeadDetailPage implements OnInit {
         this.agreementAmountError.set(error.error?.error ?? 'Could not save this amount.');
       },
     });
+  }
+
+  protected startEditDetails(l: LeadDetail): void {
+    this.nameDraft = l.name;
+    this.contactDraft = l.contact;
+    this.emailDraft = l.email ?? '';
+    this.businessNameDraft = l.businessName ?? '';
+    this.businessContactDraft = l.businessContact ?? '';
+    this.postDraft = l.post ?? '';
+    this.businessNatureDraft = l.businessNature ?? '';
+    this.detailsError.set(null);
+    this.editingDetails.set(true);
+  }
+
+  protected cancelEditDetails(): void {
+    this.editingDetails.set(false);
+    this.detailsError.set(null);
+  }
+
+  protected saveDetails(): void {
+    if (this.savingDetails() || !this.nameDraft.trim() || !this.contactDraft.trim()) return;
+
+    this.savingDetails.set(true);
+    this.detailsError.set(null);
+    this.leadsService
+      .updateLead(this.leadId, {
+        name: this.nameDraft.trim(),
+        contact: this.contactDraft.trim(),
+        businessName: this.businessNameDraft.trim() || null,
+        businessContact: this.businessContactDraft.trim() || null,
+        post: this.postDraft.trim() || null,
+        businessNature: this.businessNatureDraft.trim() || null,
+        email: this.emailDraft.trim() || null,
+      })
+      .subscribe({
+        next: (updated) => {
+          this.savingDetails.set(false);
+          this.editingDetails.set(false);
+          this.lead.set(updated);
+        },
+        error: (error: HttpErrorResponse) => {
+          this.savingDetails.set(false);
+          this.detailsError.set(error.error?.error ?? 'Could not save these changes.');
+        },
+      });
   }
 
   /**

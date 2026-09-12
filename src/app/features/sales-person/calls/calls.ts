@@ -42,9 +42,11 @@ function daysAgoLabel(dateUtc: string | null): string {
 /**
  * Every call logged by every Sales Person (company-wide, not just "my own")
  * — see docs/modules/sales-person-calls.md. Shared by Admin and Sales
- * Person, same pattern as LeadsListPage: Admin's variant is for reporting
- * context/counts only (no "+ Log a Call", rows aren't links into full
- * detail) — Admin reaches the Referrals Collection Report from here too.
+ * Person, same pattern as LeadsListPage: Admin's variant has no "+ Log a
+ * Call" button (Admin doesn't make calls), but rows link into the same
+ * call-detail/edit page as the Sales Person's own — see call-detail.ts's
+ * own isAdmin branching. Admin reaches the Referrals Collection Report from
+ * here too.
  */
 @Component({
   selector: 'app-calls',
@@ -72,14 +74,23 @@ function daysAgoLabel(dateUtc: string | null): string {
       <!-- Customer directory — click a customer to filter the table without searching every time. -->
       <div class="lg:col-span-1">
         <div class="overflow-hidden rounded-lg border border-slate-200 bg-white">
-          <div class="flex items-center justify-between border-b border-slate-100 p-3">
-            <h2 class="text-xs font-semibold uppercase tracking-wide text-slate-500">Customers</h2>
-            @if (selectedCustomerUserId()) {
-              <button type="button" (click)="selectCustomer(null)" class="text-xs font-medium text-indigo-600 hover:text-indigo-500">Clear</button>
-            }
+          <div class="border-b border-slate-100 p-3">
+            <div class="flex items-center justify-between">
+              <h2 class="text-xs font-semibold uppercase tracking-wide text-slate-500">Customers</h2>
+              @if (selectedCustomerUserId()) {
+                <button type="button" (click)="selectCustomer(null)" class="text-xs font-medium text-indigo-600 hover:text-indigo-500">Clear</button>
+              }
+            </div>
+            <input
+              type="search"
+              placeholder="Search customer or company…"
+              [ngModel]="customerSearch()"
+              (ngModelChange)="customerSearch.set($event)"
+              class="mt-2 w-full rounded-md border border-slate-300 px-2.5 py-1.5 text-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+            />
           </div>
           <div class="max-h-[40rem] divide-y divide-slate-100 overflow-y-auto">
-            @for (customer of customerDirectory(); track customer.customerUserId) {
+            @for (customer of filteredCustomerDirectory(); track customer.customerUserId) {
               <button
                 type="button"
                 (click)="selectCustomer(customer.customerUserId)"
@@ -87,13 +98,14 @@ function daysAgoLabel(dateUtc: string | null): string {
                 [class.bg-indigo-50]="selectedCustomerUserId() === customer.customerUserId"
               >
                 <p class="font-medium text-slate-900">{{ customer.displayName }}</p>
-                <p class="text-xs text-slate-500">{{ customer.location || '—' }}</p>
+                <p class="text-xs text-slate-500">{{ customer.companyName || '—' }}</p>
+                <p class="text-xs text-slate-400">{{ customer.location || '—' }}</p>
                 <p class="text-xs text-slate-400">
                   {{ daysAgo(customer.lastCallAtUtc) }}{{ customer.lastCallBySalesPersonDisplayName ? ' with ' + lastCallByLabel(customer) : '' }}
                 </p>
               </button>
             } @empty {
-              <p class="p-3 text-sm text-slate-400">No customers yet.</p>
+              <p class="p-3 text-sm text-slate-400">No customers found.</p>
             }
           </div>
         </div>
@@ -150,15 +162,9 @@ function daysAgoLabel(dateUtc: string | null): string {
           } @else {
             <div class="divide-y divide-slate-100">
               @for (call of result().items; track call.id) {
-                @if (isAdmin()) {
-                  <div class="p-4">
-                    <ng-container [ngTemplateOutlet]="rowContent" [ngTemplateOutletContext]="{ call: call }" />
-                  </div>
-                } @else {
-                  <a [routerLink]="['/app/sales-person/calls', call.id]" class="block p-4 hover:bg-slate-50">
-                    <ng-container [ngTemplateOutlet]="rowContent" [ngTemplateOutletContext]="{ call: call }" />
-                  </a>
-                }
+                <a [routerLink]="[isAdmin() ? '/app/admin/calls' : '/app/sales-person/calls', call.id]" class="block p-4 hover:bg-slate-50">
+                  <ng-container [ngTemplateOutlet]="rowContent" [ngTemplateOutletContext]="{ call: call }" />
+                </a>
               } @empty {
                 <p class="p-8 text-center text-sm text-slate-500">No calls logged yet.</p>
               }
@@ -232,6 +238,16 @@ export class CallsPage implements OnInit {
 
   protected readonly customerDirectory = signal<CustomerDirectoryEntry[]>([]);
   protected readonly selectedCustomerUserId = signal<string | null>(null);
+  protected readonly customerSearch = signal('');
+
+  /** Client-side — the whole directory is already fetched in one shot (see ngOnInit), so a second network round trip per keystroke isn't worth it. */
+  protected readonly filteredCustomerDirectory = computed(() => {
+    const term = this.customerSearch().trim().toLowerCase();
+    if (!term) return this.customerDirectory();
+    return this.customerDirectory().filter(
+      (c) => c.displayName.toLowerCase().includes(term) || c.companyName.toLowerCase().includes(term) || (c.location ?? '').toLowerCase().includes(term),
+    );
+  });
 
   private readonly manualRefresh = new Subject<void>();
 

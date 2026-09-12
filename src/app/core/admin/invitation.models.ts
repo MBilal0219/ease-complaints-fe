@@ -23,4 +23,6 @@ export interface CreateInvitationRequest {
   /** Optional — same 3-way Company/Branch resolution as direct-create (see CompanyPicker). Ignored for Developer invitations. */
   companyId?: string;
   branchId?: string;
+  /** Party (role 'User') only — whether they may file complaints/subcomplaints themselves once they accept. Defaults true. Ignored for Developer invitations. */
+  canSelfFileComplaints?: boolean;
 }

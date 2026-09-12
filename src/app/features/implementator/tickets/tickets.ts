@@ -10,8 +10,10 @@ import { PersonSummary } from '../../../core/admin/models';
 import { TicketsService } from '../../../core/tickets/tickets.service';
 import { RealtimeService } from '../../../core/realtime/realtime.service';
 import {
+  CategoryDto,
   PENDING_STATUS_QUERY_VALUE,
   PagedResult,
+  PriorityDto,
   StatusOption,
   TICKET_STATUS_LABELS,
   TicketDto,
@@ -46,9 +48,18 @@ type DateRangeFilter = '' | 'today' | 'last7days';
   imports: [DatePipe, FormsModule, RouterLink, Pagination, StatusDropdown, Modal],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
-    <div>
-      <h1 class="text-lg font-semibold text-slate-900">Complaints</h1>
-      <p class="mt-1 text-sm text-slate-500">Every complaint submitted by a party, across every status.</p>
+    <div class="flex flex-wrap items-center justify-between gap-3">
+      <div>
+        <h1 class="text-lg font-semibold text-slate-900">Complaints</h1>
+        <p class="mt-1 text-sm text-slate-500">Every complaint submitted by a party, across every status.</p>
+      </div>
+      <button
+        type="button"
+        (click)="openCreateComplaint()"
+        class="rounded-md bg-indigo-600 px-4 py-2 text-sm font-medium text-white hover:bg-indigo-500"
+      >
+        + Create Complaint
+      </button>
     </div>
 
     @if (actionError()) {
@@ -178,6 +189,101 @@ type DateRangeFilter = '' | 'today' | 'last7days';
         }
       </div>
     </app-modal>
+
+    <app-modal [open]="showCreateComplaint()" (close)="showCreateComplaint.set(false)">
+      <h2 class="text-base font-semibold text-slate-900">Create Complaint</h2>
+      <p class="mt-1 text-sm text-slate-500">File a complaint on a Party's behalf, or without one at all.</p>
+
+      <div class="mt-4 space-y-3">
+        <div class="flex items-center justify-between rounded-md border border-slate-200 bg-slate-50 px-3 py-2.5">
+          <div>
+            <p class="text-sm font-medium text-slate-700">Attach a Party</p>
+            <p class="text-xs text-slate-500">Turn off to file this with no party attached.</p>
+          </div>
+          <label class="inline-flex cursor-pointer items-center">
+            <input type="checkbox" [(ngModel)]="hasParty" (ngModelChange)="onHasPartyChange()" class="peer sr-only" />
+            <span class="peer relative h-5 w-9 rounded-full bg-slate-300 transition-colors peer-checked:bg-indigo-600 after:absolute after:left-0.5 after:top-0.5 after:h-4 after:w-4 after:rounded-full after:bg-white after:transition-transform after:content-[''] peer-checked:after:translate-x-4"></span>
+          </label>
+        </div>
+
+        @if (hasParty) {
+          <div>
+            <label class="block text-sm font-medium text-slate-700">Party</label>
+            @if (selectedParty(); as party) {
+              <div class="mt-1 flex items-center justify-between rounded-md border border-indigo-200 bg-indigo-50 px-3 py-2 text-sm">
+                <span class="font-medium text-slate-800">{{ party.displayName }} <span class="text-slate-500">({{ party.email }})</span></span>
+                <button type="button" (click)="selectedParty.set(null)" class="text-xs font-medium text-indigo-600 hover:text-indigo-500">Change</button>
+              </div>
+            } @else {
+              <input
+                type="search"
+                placeholder="Search parties by name or email…"
+                [(ngModel)]="partySearch"
+                (ngModelChange)="onPartySearchChange()"
+                class="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+              />
+              @if (partyResults().length > 0) {
+                <div class="mt-1 max-h-40 space-y-1 overflow-y-auto rounded-md border border-slate-200 p-1.5">
+                  @for (party of partyResults(); track party.id) {
+                    <button
+                      type="button"
+                      (click)="selectedParty.set(party)"
+                      class="flex w-full items-center justify-between rounded-md px-2.5 py-1.5 text-left text-sm hover:bg-slate-50"
+                    >
+                      <span class="font-medium text-slate-800">{{ party.displayName }}</span>
+                      <span class="text-xs text-slate-400">{{ party.email }}</span>
+                    </button>
+                  }
+                </div>
+              }
+            }
+          </div>
+        }
+
+        <div>
+          <label class="block text-sm font-medium text-slate-700">Title</label>
+          <input type="text" [(ngModel)]="newTitle" class="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500" />
+        </div>
+        <div>
+          <label class="block text-sm font-medium text-slate-700">Description</label>
+          <textarea rows="4" [(ngModel)]="newDescription" class="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"></textarea>
+        </div>
+        <div class="grid grid-cols-2 gap-3">
+          <div>
+            <label class="block text-sm font-medium text-slate-700">Category</label>
+            <select [(ngModel)]="newCategoryId" class="mt-1 w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500">
+              @for (category of categories(); track category.id) {
+                <option [value]="category.id">{{ category.name }}</option>
+              }
+            </select>
+          </div>
+          <div>
+            <label class="block text-sm font-medium text-slate-700">Priority</label>
+            <select [(ngModel)]="newPriorityId" class="mt-1 w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500">
+              @for (priority of priorities(); track priority.id) {
+                <option [value]="priority.id">{{ priority.name }}</option>
+              }
+            </select>
+          </div>
+        </div>
+      </div>
+
+      @if (createError()) {
+        <p class="mt-2 text-sm text-red-600" role="alert">{{ createError() }}</p>
+      }
+
+      <div class="mt-4 flex justify-end gap-3">
+        <button type="button" (click)="showCreateComplaint.set(false)" class="rounded-md border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50">Cancel</button>
+        <button
+          type="button"
+          (click)="createComplaint()"
+          [disabled]="creating() || !newTitle.trim() || newDescription.trim().length < 3 || !newCategoryId || !newPriorityId || (hasParty && !selectedParty())"
+          class="rounded-md bg-indigo-600 px-4 py-2 text-sm font-medium text-white hover:bg-indigo-500 disabled:opacity-50"
+        >
+          {{ creating() ? 'Creating…' : 'Create complaint' }}
+        </button>
+      </div>
+    </app-modal>
   `,
 })
 export class ImplementatorTicketsPage implements OnInit {
@@ -206,10 +312,29 @@ export class ImplementatorTicketsPage implements OnInit {
   protected readonly actionError = signal<string | null>(null);
   protected readonly assignTargetTicket = signal<TicketDto | null>(null);
 
+  // ---- Create Complaint (req #7) ----
+  protected readonly showCreateComplaint = signal(false);
+  protected readonly categories = signal<CategoryDto[]>([]);
+  protected readonly priorities = signal<PriorityDto[]>([]);
+  protected hasParty = true;
+  protected partySearch = '';
+  protected readonly partyResults = signal<PersonSummary[]>([]);
+  protected readonly selectedParty = signal<PersonSummary | null>(null);
+  protected newTitle = '';
+  protected newDescription = '';
+  protected newCategoryId: number | '' = '';
+  protected newPriorityId: number | '' = '';
+  protected readonly creating = signal(false);
+  protected readonly createError = signal<string | null>(null);
+
   private readonly manualRefresh = new Subject<void>();
 
   ngOnInit(): void {
     this.adminService.getDevelopers('', 1, 100).subscribe((result) => this.developers.set(result.items));
+    this.ticketsService.getLookups().subscribe((lookups) => {
+      this.categories.set(lookups.categories);
+      this.priorities.set(lookups.priorities);
+    });
 
     const params = this.route.snapshot.queryParamMap;
     const status = params.get('status');
@@ -303,5 +428,64 @@ export class ImplementatorTicketsPage implements OnInit {
         this.actionError.set(error.error?.error ?? 'Could not assign this ticket.');
       },
     });
+  }
+
+  // ---- Create Complaint (req #7) ----
+
+  openCreateComplaint(): void {
+    this.hasParty = true;
+    this.partySearch = '';
+    this.partyResults.set([]);
+    this.selectedParty.set(null);
+    this.newTitle = '';
+    this.newDescription = '';
+    this.newCategoryId = this.categories()[0]?.id ?? '';
+    this.newPriorityId = this.priorities()[0]?.id ?? '';
+    this.createError.set(null);
+    this.showCreateComplaint.set(true);
+  }
+
+  onHasPartyChange(): void {
+    this.selectedParty.set(null);
+    this.partySearch = '';
+    this.partyResults.set([]);
+  }
+
+  onPartySearchChange(): void {
+    const term = this.partySearch.trim();
+    if (term.length < 2) {
+      this.partyResults.set([]);
+      return;
+    }
+    this.adminService.getParties(term, 1, 8).subscribe((result) => this.partyResults.set(result.items));
+  }
+
+  createComplaint(): void {
+    const title = this.newTitle.trim();
+    const description = this.newDescription.trim();
+    if (!title || description.length < 3 || !this.newCategoryId || !this.newPriorityId || this.creating()) return;
+    if (this.hasParty && !this.selectedParty()) return;
+
+    this.creating.set(true);
+    this.createError.set(null);
+    this.ticketsService
+      .createAsImplementator({
+        title,
+        description,
+        categoryId: Number(this.newCategoryId),
+        priorityId: Number(this.newPriorityId),
+        partyUserId: this.hasParty ? (this.selectedParty()?.id ?? null) : null,
+      })
+      .subscribe({
+        next: (ticket) => {
+          this.creating.set(false);
+          this.showCreateComplaint.set(false);
+          this.router.navigate(['/app/implementator/tickets', ticket.id]);
+        },
+        error: (error: HttpErrorResponse) => {
+          this.creating.set(false);
+          this.createError.set(error.error?.error ?? 'Could not create this complaint.');
+        },
+      });
   }
 }

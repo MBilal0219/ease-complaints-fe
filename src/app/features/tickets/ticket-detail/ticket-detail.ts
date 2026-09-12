@@ -18,23 +18,28 @@ import {
   TICKET_MESSAGE_OUTCOME_LABELS,
   TICKET_STATUS_BADGE_CLASSES,
   TICKET_STATUS_LABELS,
+  TicketAttachmentDto,
   TicketDto,
+  TicketMessageAudience,
   TicketMessageDto,
   TicketMessageOutcomeStatus,
   adminStatusOptionsFor,
   priorityBadgeClasses,
 } from '../../../core/tickets/models';
+import { AttachmentPreview, PreviewItem } from '../../../shared/ui/attachment-preview/attachment-preview';
 import { ConfirmDialog } from '../../../shared/ui/confirm-dialog/confirm-dialog';
 import { FileDropzone } from '../../../shared/ui/file-dropzone/file-dropzone';
 import { Modal } from '../../../shared/ui/modal/modal';
 import { StatusDropdown } from '../../../shared/ui/status-dropdown/status-dropdown';
+import { PartySubComplaintsPanel } from './party-subcomplaints-panel';
+import { TicketTasksPanel } from './ticket-tasks-panel';
 
 const TICKET_POLL_MS = 6_000;
 const OUTCOME_OPTIONS: TicketMessageOutcomeStatus[] = ['InProgress', 'Resolved', 'Rejected', 'Sale'];
 
 @Component({
   selector: 'app-ticket-detail',
-  imports: [DatePipe, RouterLink, FileDropzone, Modal, ConfirmDialog, StatusDropdown],
+  imports: [DatePipe, RouterLink, FileDropzone, Modal, ConfirmDialog, StatusDropdown, TicketTasksPanel, PartySubComplaintsPanel, AttachmentPreview],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     @if (notFound()) {
@@ -166,11 +171,52 @@ const OUTCOME_OPTIONS: TicketMessageOutcomeStatus[] = ['InProgress', 'Resolved',
             <p class="mt-2 whitespace-pre-wrap text-sm text-slate-600">{{ t.description }}</p>
           </div>
 
+          @if (t.tasks; as tasks) {
+            <div class="mt-6">
+              @if (isOwner()) {
+                <app-party-subcomplaints-panel [ticketId]="t.id" [ticketStatus]="t.status" [tasks]="tasks" (changed)="onTaskChanged()" />
+              } @else {
+                <app-ticket-tasks-panel
+                  [ticketId]="t.id"
+                  [ticketStatus]="t.status"
+                  [tasks]="tasks"
+                  [developers]="developers()"
+                  [canManage]="isAdmin()"
+                  [currentDeveloperId]="developerUserId()"
+                  [currentUserId]="authService.currentUser()?.id ?? null"
+                  (changed)="onTaskChanged()"
+                />
+              }
+            </div>
+          }
+
           <div class="mt-6 rounded-lg border border-slate-200 bg-white">
-            <h2 class="border-b border-slate-100 p-4 text-sm font-semibold text-slate-900">Conversation</h2>
+            <div class="flex flex-wrap items-center justify-between gap-2 border-b border-slate-100 p-4">
+              <h2 class="text-sm font-semibold text-slate-900">Conversation</h2>
+              @if (showThreadTabs()) {
+                <div class="flex rounded-md border border-slate-200 p-0.5 text-xs font-medium">
+                  <button
+                    type="button"
+                    (click)="activeThread.set('Party')"
+                    class="rounded px-2.5 py-1"
+                    [class]="activeThread() === 'Party' ? 'bg-indigo-600 text-white' : 'text-slate-600 hover:bg-slate-50'"
+                  >
+                    Party
+                  </button>
+                  <button
+                    type="button"
+                    (click)="activeThread.set('Developer')"
+                    class="rounded px-2.5 py-1"
+                    [class]="activeThread() === 'Developer' ? 'bg-indigo-600 text-white' : 'text-slate-600 hover:bg-slate-50'"
+                  >
+                    Developer
+                  </button>
+                </div>
+              }
+            </div>
 
             <div class="max-h-[28rem] space-y-4 overflow-y-auto p-4">
-              @for (message of messages(); track message.id) {
+              @for (message of visibleMessages(); track message.id) {
                 <div class="rounded-md border border-slate-100 bg-slate-50 p-3">
                   <div class="flex items-center justify-between gap-2">
                     <span class="text-sm font-medium text-slate-800">{{ message.authorDisplayName }}</span>
@@ -263,11 +309,14 @@ const OUTCOME_OPTIONS: TicketMessageOutcomeStatus[] = ['InProgress', 'Resolved',
                     <div class="mt-2 flex flex-wrap gap-2">
                       @for (attachment of message.attachments; track attachment.id) {
                         @if (attachment.category === 'Image') {
-                          <a [href]="fileUrl(attachment.downloadUrl)" target="_blank" rel="noopener" class="block">
+                          <button type="button" (click)="openImagePreview(message, attachment.id)" class="block">
                             <img [src]="fileUrl(attachment.downloadUrl)" [alt]="attachment.originalFileName" class="h-24 w-24 rounded-md border border-slate-200 object-cover hover:opacity-90" />
-                          </a>
+                          </button>
                         } @else if (attachment.category === 'Video') {
-                          <video [src]="fileUrl(attachment.downloadUrl)" controls class="h-32 max-w-full rounded-md border border-slate-200 bg-black"></video>
+                          <button type="button" (click)="openVideoPreview(attachment)" class="relative block h-24 w-40 overflow-hidden rounded-md border border-slate-200 bg-black">
+                            <video [src]="fileUrl(attachment.downloadUrl)" class="h-full w-full object-cover"></video>
+                            <span class="absolute inset-0 flex items-center justify-center text-xl text-white/90">▶</span>
+                          </button>
                         } @else {
                           <a
                             [href]="fileUrl(attachment.downloadUrl)"
@@ -290,6 +339,9 @@ const OUTCOME_OPTIONS: TicketMessageOutcomeStatus[] = ['InProgress', 'Resolved',
 
             @if (t.status !== 'Closed' && t.status !== 'Revoked') {
               <div class="border-t border-slate-100 p-4">
+                @if (showThreadTabs()) {
+                  <p class="mb-1.5 text-xs text-slate-400">Posting to the {{ activeThread() }} conversation.</p>
+                }
                 <textarea
                   rows="3"
                   [value]="draftBody()"
@@ -579,6 +631,14 @@ const OUTCOME_OPTIONS: TicketMessageOutcomeStatus[] = ['InProgress', 'Resolved',
         (confirm)="deleteRevoked()"
         (cancel)="showDeleteConfirm.set(false)"
       />
+
+      <app-attachment-preview
+        [open]="previewOpen()"
+        [kind]="previewKind()"
+        [items]="previewItems()"
+        [startIndex]="previewStartIndex()"
+        (closed)="previewOpen.set(false)"
+      />
     } @else {
       <p class="text-sm text-slate-500" role="status">Loading…</p>
     }
@@ -597,7 +657,7 @@ export class TicketDetailPage implements OnInit {
   private readonly ticketsService = inject(TicketsService);
   private readonly dealsService = inject(DealsService);
   private readonly adminService = inject(AdminService);
-  private readonly authService = inject(AuthService);
+  protected readonly authService = inject(AuthService);
   private readonly destroyRef = inject(DestroyRef);
 
   private readonly ticketId = this.route.snapshot.paramMap.get('id')!;
@@ -643,6 +703,12 @@ export class TicketDetailPage implements OnInit {
   private readonly messagesRefresh = new Subject<void>();
   private readonly composerDropzone = viewChild<FileDropzone>('composerDropzone');
 
+  protected readonly activeThread = signal<TicketMessageAudience>('Party');
+  protected readonly previewOpen = signal(false);
+  protected readonly previewKind = signal<'image' | 'video'>('image');
+  protected readonly previewItems = signal<PreviewItem[]>([]);
+  protected readonly previewStartIndex = signal(0);
+
   /** Attachment downloadUrl fields come from the backend as relative paths, bound directly into <a href>/<img src> — not an HttpClient call, so the auth interceptor never rewrites them. Needs the API's own origin in production (see environment.apiBaseUrl). */
   protected fileUrl(relativeUrl: string): string {
     return environment.apiBaseUrl + relativeUrl;
@@ -665,6 +731,27 @@ export class TicketDetailPage implements OnInit {
     const t = this.ticket();
     if (!t || t.status === 'Closed' || t.status === 'Revoked') return false;
     return this.isAdmin() || this.canDeveloperAct();
+  });
+
+  /** This viewer's own id when they're a Developer — used to gate the Tasks panel's Developer-only actions (a task currently assigned to them). Null for every other role. */
+  protected readonly developerUserId = computed(() => {
+    const user = this.authService.currentUser();
+    return user?.roles.includes(ROLE_DEVELOPER) ? user.id : null;
+  });
+
+  /**
+   * Party↔Implementator and Developer↔Implementator are separate threads
+   * (see TicketMessageDto.audience). Only Admin/Implementator receive both
+   * from the backend and need a tab switcher — a Party/Developer viewer's
+   * GetMessagesAsync response is already scoped to just their own thread
+   * (plus any legacy null-audience message), so no filtering is needed here
+   * for them.
+   */
+  protected readonly showThreadTabs = computed(() => this.isAdmin());
+  protected readonly visibleMessages = computed(() => {
+    if (!this.showThreadTabs()) return this.messages();
+    const thread = this.activeThread();
+    return this.messages().filter((m) => m.audience == null || m.audience === thread);
   });
 
   // Assign/Reassign already has its own dedicated button above — the
@@ -898,7 +985,7 @@ export class TicketDetailPage implements OnInit {
 
     this.sending.set(true);
     this.sendError.set(null);
-    this.ticketsService.postMessage(this.ticketId, body, files).subscribe({
+    this.ticketsService.postMessage(this.ticketId, body, files, undefined, this.showThreadTabs() ? this.activeThread() : undefined).subscribe({
       next: () => {
         this.sending.set(false);
         this.draftBody.set('');
@@ -965,5 +1052,27 @@ export class TicketDetailPage implements OnInit {
     if (category === 'Archive') return '🗜️';
     if (category === 'Video') return '🎞️';
     return '📎';
+  }
+
+  /** A task mutation may have changed the derived Ticket.Status — refetch immediately rather than waiting for the next poll tick. */
+  protected onTaskChanged(): void {
+    this.ticketsService.getById(this.ticketId).subscribe((ticket) => this.ticket.set(ticket));
+  }
+
+  /** Every Image attachment in the same message becomes the gallery, opened at the clicked one. */
+  protected openImagePreview(message: TicketMessageDto, attachmentId: string): void {
+    const images = message.attachments.filter((a) => a.category === 'Image');
+    const startIndex = Math.max(0, images.findIndex((a) => a.id === attachmentId));
+    this.previewItems.set(images.map((a) => ({ url: this.fileUrl(a.downloadUrl), name: a.originalFileName })));
+    this.previewStartIndex.set(startIndex);
+    this.previewKind.set('image');
+    this.previewOpen.set(true);
+  }
+
+  protected openVideoPreview(attachment: TicketAttachmentDto): void {
+    this.previewItems.set([{ url: this.fileUrl(attachment.downloadUrl), name: attachment.originalFileName }]);
+    this.previewStartIndex.set(0);
+    this.previewKind.set('video');
+    this.previewOpen.set(true);
   }
 }
