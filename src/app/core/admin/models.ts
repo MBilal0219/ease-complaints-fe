@@ -200,7 +200,10 @@ export interface CompanyUser {
   displayName: string;
   email: string;
   role: string;
+  branchId: string;
   branchName: string;
+  location: string | null;
+  phoneNumber: string | null;
   isActive: boolean;
   createdAtUtc: string;
 }
@@ -221,6 +224,22 @@ export interface AddCompanyUserRequest {
   location?: string;
   phoneNumber?: string;
   password: string;
+}
+
+export interface UpdateCompanyRequest {
+  companyName: string;
+}
+
+export interface UpdateBranchRequest {
+  branchName: string;
+}
+
+export interface UpdateCompanyUserRequest {
+  displayName: string;
+  email: string;
+  branchId: string;
+  location?: string;
+  phoneNumber?: string;
 }
 
 export interface PersonDetail {

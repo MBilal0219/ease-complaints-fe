@@ -4,8 +4,9 @@ import { ChangeDetectionStrategy, Component, OnInit, inject, signal } from '@ang
 import { FormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
 import { ActivatedRoute, Router, RouterLink } from '@angular/router';
 import { AdminService } from '../../../core/admin/admin.service';
-import { CompanyDetail } from '../../../core/admin/models';
+import { CompanyDetail, CompanyUser } from '../../../core/admin/models';
 import { resolveAdminBase } from '../../../core/admin/route-base';
+import { ConfirmDialog } from '../../../shared/ui/confirm-dialog/confirm-dialog';
 import { CompanyUserForm } from './company-user-form';
 
 const DEFAULT_BRANCH_NAME = 'Head Office';
@@ -19,7 +20,7 @@ const DEFAULT_BRANCH_NAME = 'Head Office';
  */
 @Component({
   selector: 'app-company-detail',
-  imports: [DatePipe, ReactiveFormsModule, RouterLink, CompanyUserForm],
+  imports: [DatePipe, ReactiveFormsModule, RouterLink, CompanyUserForm, ConfirmDialog],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     <a [routerLink]="[base, 'companies']" class="text-sm font-medium text-indigo-600 hover:text-indigo-500">← Companies</a>
@@ -53,12 +54,36 @@ const DEFAULT_BRANCH_NAME = 'Head Office';
         </button>
       </form>
     } @else if (company(); as c) {
-      <div class="mt-2 flex items-center gap-2">
-        <h1 class="text-lg font-semibold text-slate-900">{{ c.name }}</h1>
-        @if (c.isInternal) {
-          <span class="rounded-full bg-indigo-100 px-2 py-0.5 text-xs font-medium text-indigo-700">Internal</span>
+      @if (editingCompanyName()) {
+        <div class="mt-2 flex flex-wrap items-center gap-2">
+          <input
+            type="text"
+            [formControl]="companyNameControl"
+            class="rounded-md border border-slate-300 px-3 py-1.5 text-lg font-semibold focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+          />
+          <button
+            type="button"
+            (click)="saveCompanyName()"
+            [disabled]="!companyNameControl.value.trim() || savingCompanyName()"
+            class="rounded-md bg-indigo-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-indigo-500 disabled:opacity-50"
+          >
+            {{ savingCompanyName() ? 'Saving…' : 'Save' }}
+          </button>
+          <button type="button" (click)="editingCompanyName.set(false)" class="text-sm font-medium text-slate-500 hover:text-slate-700">Cancel</button>
+        </div>
+        @if (companyNameError()) {
+          <p class="mt-1 text-sm text-red-600" role="alert">{{ companyNameError() }}</p>
         }
-      </div>
+      } @else {
+        <div class="mt-2 flex items-center gap-2">
+          <h1 class="text-lg font-semibold text-slate-900">{{ c.name }}</h1>
+          @if (c.isInternal) {
+            <span class="rounded-full bg-indigo-100 px-2 py-0.5 text-xs font-medium text-indigo-700">Internal</span>
+          } @else {
+            <button type="button" (click)="startEditCompanyName(c.name)" class="text-xs font-medium text-indigo-600 hover:text-indigo-500">Edit</button>
+          }
+        </div>
+      }
       <p class="mt-1 text-sm text-slate-500">Created {{ c.createdAtUtc | date: 'mediumDate' }} · {{ c.branches.length }} branch{{ c.branches.length === 1 ? '' : 'es' }}</p>
 
       <!-- Branches + inline add-branch -->
@@ -100,13 +125,38 @@ const DEFAULT_BRANCH_NAME = 'Head Office';
         <ul class="mt-3 divide-y divide-slate-100 text-sm">
           @for (branch of c.branches; track branch.id) {
             <li class="flex items-center justify-between py-2">
-              <span class="font-medium text-slate-800">{{ branch.name }}</span>
-              @if (c.isInternal) {
-                <span class="text-xs text-slate-400">—</span>
-              } @else if (branch.ownerUserId) {
-                <span class="rounded-full bg-slate-100 px-2 py-0.5 text-xs font-medium text-slate-500">Owned</span>
+              @if (editingBranchId() === branch.id) {
+                <div class="flex flex-1 flex-wrap items-center gap-2">
+                  <input
+                    type="text"
+                    [formControl]="branchNameControl"
+                    class="rounded-md border border-slate-300 px-2 py-1 text-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                  />
+                  <button
+                    type="button"
+                    (click)="saveBranchName(branch.id)"
+                    [disabled]="!branchNameControl.value.trim() || savingBranchName()"
+                    class="rounded-md bg-indigo-600 px-2.5 py-1 text-xs font-medium text-white hover:bg-indigo-500 disabled:opacity-50"
+                  >
+                    {{ savingBranchName() ? 'Saving…' : 'Save' }}
+                  </button>
+                  <button type="button" (click)="editingBranchId.set(null)" class="text-xs font-medium text-slate-500 hover:text-slate-700">Cancel</button>
+                  @if (branchNameError()) {
+                    <p class="w-full text-xs text-red-600" role="alert">{{ branchNameError() }}</p>
+                  }
+                </div>
               } @else {
-                <span class="rounded-full bg-green-100 px-2 py-0.5 text-xs font-medium text-green-700">Available</span>
+                <span class="font-medium text-slate-800">{{ branch.name }}</span>
+                <div class="flex items-center gap-2">
+                  @if (c.isInternal) {
+                    <span class="text-xs text-slate-400">—</span>
+                  } @else if (branch.ownerUserId) {
+                    <span class="rounded-full bg-slate-100 px-2 py-0.5 text-xs font-medium text-slate-500">Owned</span>
+                  } @else {
+                    <span class="rounded-full bg-green-100 px-2 py-0.5 text-xs font-medium text-green-700">Available</span>
+                  }
+                  <button type="button" (click)="startEditBranch(branch.id, branch.name)" class="text-xs font-medium text-indigo-600 hover:text-indigo-500">Edit</button>
+                </div>
               }
             </li>
           }
@@ -128,11 +178,12 @@ const DEFAULT_BRANCH_NAME = 'Head Office';
                   <th class="px-4 py-2">Role</th>
                   <th class="px-4 py-2">Branch</th>
                   <th class="px-4 py-2">Status</th>
+                  <th class="px-4 py-2">Actions</th>
                 </tr>
               </thead>
               <tbody class="divide-y divide-slate-100">
                 @for (user of c.users; track user.id) {
-                  <tr>
+                  <tr [class.bg-indigo-50]="editingUser()?.id === user.id">
                     <td class="px-4 py-2 font-medium text-slate-900">{{ user.displayName }}</td>
                     <td class="px-4 py-2 text-slate-600">{{ user.email }}</td>
                     <td class="px-4 py-2 text-slate-600">{{ user.role }}</td>
@@ -142,10 +193,16 @@ const DEFAULT_BRANCH_NAME = 'Head Office';
                         {{ user.isActive ? 'Active' : 'Inactive' }}
                       </span>
                     </td>
+                    <td class="px-4 py-2">
+                      <div class="flex items-center gap-3">
+                        <button type="button" (click)="editingUser.set(user)" class="text-xs font-medium text-indigo-600 hover:text-indigo-500">Edit</button>
+                        <button type="button" (click)="confirmDeleteUser(user)" class="text-xs font-medium text-red-600 hover:text-red-500">Delete</button>
+                      </div>
+                    </td>
                   </tr>
                 } @empty {
                   <tr>
-                    <td colspan="5" class="px-4 py-8 text-center text-slate-500">No users yet — add the first one on the right.</td>
+                    <td colspan="6" class="px-4 py-8 text-center text-slate-500">No users yet — add the first one on the right.</td>
                   </tr>
                 }
               </tbody>
@@ -153,8 +210,29 @@ const DEFAULT_BRANCH_NAME = 'Head Office';
           </div>
         </div>
 
-        <app-company-user-form [companyId]="c.id" [branches]="c.branches" (added)="reload()" />
+        <app-company-user-form
+          [companyId]="c.id"
+          [branches]="c.branches"
+          [editingUser]="editingUser()"
+          (added)="reload()"
+          (updated)="onUserUpdated()"
+          (editCancelled)="editingUser.set(null)"
+        />
       </div>
+
+      <app-confirm-dialog
+        [open]="!!deletingUser()"
+        title="Delete this user?"
+        [message]="deleteConfirmMessage()"
+        confirmLabel="Delete"
+        [destructive]="true"
+        [busy]="deletingBusy()"
+        (confirm)="deleteUser()"
+        (cancel)="deletingUser.set(null)"
+      />
+      @if (deleteError()) {
+        <p class="mt-2 text-sm text-red-600" role="alert">{{ deleteError() }}</p>
+      }
     } @else {
       <p class="mt-4 text-sm text-slate-500" role="status">Loading…</p>
     }
@@ -184,6 +262,27 @@ export class CompanyDetailPage implements OnInit {
   protected readonly addBranchBusy = signal(false);
   protected readonly addBranchError = signal<string | null>(null);
   protected readonly newBranchName = this.fb.nonNullable.control('');
+
+  protected readonly editingBranchId = signal<string | null>(null);
+  protected readonly savingBranchName = signal(false);
+  protected readonly branchNameError = signal<string | null>(null);
+  protected readonly branchNameControl = this.fb.nonNullable.control('');
+
+  protected readonly editingCompanyName = signal(false);
+  protected readonly savingCompanyName = signal(false);
+  protected readonly companyNameError = signal<string | null>(null);
+  protected readonly companyNameControl = this.fb.nonNullable.control('');
+
+  protected readonly editingUser = signal<CompanyUser | null>(null);
+  protected readonly deletingUser = signal<CompanyUser | null>(null);
+  protected readonly deletingBusy = signal(false);
+  protected readonly deleteError = signal<string | null>(null);
+  protected readonly deleteConfirmMessage = () => {
+    const user = this.deletingUser();
+    return user
+      ? `This permanently removes ${user.displayName}'s account. Users who have already filed a complaint can't be deleted this way — deactivate them instead.`
+      : '';
+  };
 
   ngOnInit(): void {
     if (this.companyId) this.reload();
@@ -233,6 +332,90 @@ export class CompanyDetailPage implements OnInit {
       error: (error: HttpErrorResponse) => {
         this.addBranchBusy.set(false);
         this.addBranchError.set(error.error?.error ?? 'Could not add this branch.');
+      },
+    });
+  }
+
+  // ---- Edit company name ----
+
+  startEditCompanyName(currentName: string): void {
+    this.companyNameError.set(null);
+    this.companyNameControl.setValue(currentName);
+    this.editingCompanyName.set(true);
+  }
+
+  saveCompanyName(): void {
+    const companyName = this.companyNameControl.value.trim();
+    if (!companyName || this.savingCompanyName() || !this.companyId) return;
+    this.savingCompanyName.set(true);
+    this.companyNameError.set(null);
+    this.adminService.updateCompany(this.companyId, { companyName }).subscribe({
+      next: (detail) => {
+        this.savingCompanyName.set(false);
+        this.editingCompanyName.set(false);
+        this.company.set(detail);
+      },
+      error: (error: HttpErrorResponse) => {
+        this.savingCompanyName.set(false);
+        this.companyNameError.set(error.error?.error ?? 'Could not rename this company.');
+      },
+    });
+  }
+
+  // ---- Edit a branch name ----
+
+  startEditBranch(branchId: string, currentName: string): void {
+    this.branchNameError.set(null);
+    this.branchNameControl.setValue(currentName);
+    this.editingBranchId.set(branchId);
+  }
+
+  saveBranchName(branchId: string): void {
+    const branchName = this.branchNameControl.value.trim();
+    if (!branchName || this.savingBranchName() || !this.companyId) return;
+    this.savingBranchName.set(true);
+    this.branchNameError.set(null);
+    this.adminService.updateBranch(this.companyId, branchId, { branchName }).subscribe({
+      next: () => {
+        this.savingBranchName.set(false);
+        this.editingBranchId.set(null);
+        this.reload();
+      },
+      error: (error: HttpErrorResponse) => {
+        this.savingBranchName.set(false);
+        this.branchNameError.set(error.error?.error ?? 'Could not rename this branch.');
+      },
+    });
+  }
+
+  // ---- Edit / delete a company user ----
+
+  onUserUpdated(): void {
+    this.editingUser.set(null);
+    this.reload();
+  }
+
+  confirmDeleteUser(user: CompanyUser): void {
+    this.deleteError.set(null);
+    this.deletingUser.set(user);
+  }
+
+  deleteUser(): void {
+    const user = this.deletingUser();
+    if (!user || this.deletingBusy() || !this.companyId) return;
+    this.deletingBusy.set(true);
+    this.deleteError.set(null);
+    this.adminService.deleteCompanyUser(this.companyId, user.id).subscribe({
+      next: () => {
+        this.deletingBusy.set(false);
+        this.deletingUser.set(null);
+        if (this.editingUser()?.id === user.id) this.editingUser.set(null);
+        this.reload();
+      },
+      error: (error: HttpErrorResponse) => {
+        this.deletingBusy.set(false);
+        this.deletingUser.set(null);
+        this.deleteError.set(error.error?.error ?? 'Could not delete this user.');
       },
     });
   }

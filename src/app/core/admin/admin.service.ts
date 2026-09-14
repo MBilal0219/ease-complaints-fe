@@ -26,6 +26,9 @@ import {
   PersonSummary,
   SalesPersonWorkload,
   StaffMissingIdCardRow,
+  UpdateBranchRequest,
+  UpdateCompanyRequest,
+  UpdateCompanyUserRequest,
   UpdateStaffRequest,
 } from './models';
 
@@ -178,6 +181,11 @@ export class AdminService {
     return this.http.post<BranchOption>(`${BASE}/companies/${companyId}/branches`, request);
   }
 
+  /** Renames a Branch. */
+  updateBranch(companyId: string, branchId: string, request: UpdateBranchRequest): Observable<BranchOption> {
+    return this.http.put<BranchOption>(`${BASE}/companies/${companyId}/branches/${branchId}`, request);
+  }
+
   getCompanies(dateFrom?: string, dateTo?: string, search?: string): Observable<CompanyListItem[]> {
     let params = new HttpParams();
     if (dateFrom) params = params.set('dateFrom', dateFrom);
@@ -200,6 +208,18 @@ export class AdminService {
 
   addCompanyUser(companyId: string, request: AddCompanyUserRequest): Observable<CompanyUser> {
     return this.http.post<CompanyUser>(`${BASE}/companies/${companyId}/users`, request);
+  }
+
+  updateCompany(id: string, request: UpdateCompanyRequest): Observable<CompanyDetail> {
+    return this.http.put<CompanyDetail>(`${BASE}/companies/${id}`, request);
+  }
+
+  updateCompanyUser(companyId: string, userId: string, request: UpdateCompanyUserRequest): Observable<CompanyUser> {
+    return this.http.put<CompanyUser>(`${BASE}/companies/${companyId}/users/${userId}`, request);
+  }
+
+  deleteCompanyUser(companyId: string, userId: string): Observable<void> {
+    return this.http.delete<void>(`${BASE}/companies/${companyId}/users/${userId}`);
   }
 
   setUserActive(id: string, isActive: boolean): Observable<void> {
