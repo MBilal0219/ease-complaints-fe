@@ -273,9 +273,9 @@ export class AdminService {
     return this.http.post<LookupValue>(`${BASE}/lookups/ranks`, { name });
   }
 
-  /** Party only — mints the admin's browser a fresh session as that party. See admin.md for the one-way tradeoff. */
-  impersonateParty(id: string): Observable<{ id: string; email: string; displayName: string; roles: string[] }> {
-    return this.http.post<{ id: string; email: string; displayName: string; roles: string[] }>(`${BASE}/parties/${id}/impersonate`, {});
+  /** Any non-Admin account (Party, Developer, Sales Person, Implementator, BranchAdmin) — mints the admin's browser a fresh session as that user, invisible in their own "My Sessions" list. See admin.md for the one-way tradeoff. */
+  impersonateUser(id: string): Observable<{ id: string; email: string; displayName: string; roles: string[] }> {
+    return this.http.post<{ id: string; email: string; displayName: string; roles: string[] }>(`${BASE}/users/${id}/impersonate`, {});
   }
 
   private buildParams(search: string, page: number, pageSize: number): HttpParams {

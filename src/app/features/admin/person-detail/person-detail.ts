@@ -79,13 +79,13 @@ function isoDate(date: Date): string {
         </div>
 
         <div class="flex flex-wrap gap-2">
-          @if (role === 'Party' && isAdmin) {
+          @if (isAdmin) {
             <button
               type="button"
               (click)="showImpersonateConfirm.set(true)"
               class="rounded-md border border-indigo-300 bg-white px-3 py-1.5 text-sm font-medium text-indigo-600 hover:bg-indigo-50"
             >
-              Log in as this party
+              Log in as this account
             </button>
           }
           @if (isStaff) {
@@ -535,8 +535,8 @@ function isoDate(date: Date): string {
       />
       <app-confirm-dialog
         [open]="showImpersonateConfirm()"
-        title="Log in as this party?"
-        message="You'll be signed in as them in this browser. You'll need to log back in as Admin afterwards to return."
+        title="Log in as this account?"
+        message="You'll be signed in as them in this browser — invisibly to them, it won't show up in their own Sessions list. You'll need to log back in as Admin afterwards to return."
         confirmLabel="Log in as them"
         [busy]="actionPending()"
         (confirm)="impersonate()"
@@ -899,9 +899,9 @@ export class PersonDetailPage implements OnInit {
   impersonate(): void {
     this.actionPending.set(true);
     this.actionError.set(null);
-    this.adminService.impersonateParty(this.personId).subscribe({
+    this.adminService.impersonateUser(this.personId).subscribe({
       next: () => {
-        // Our own session cookies were just replaced with the party's —
+        // Our own session cookies were just replaced with the target's —
         // a hard navigation re-resolves the app's identity from scratch.
         window.location.href = '/app';
       },
