@@ -187,6 +187,9 @@ export interface CompanyListItem {
   branchCount: number;
   userCount: number;
   createdAtUtc: string;
+  /** Who explicitly added this company, and when (createdAtUtc above) — null if it was never added through this screen. */
+  createdByUserId: string | null;
+  createdByDisplayName: string | null;
 }
 
 export interface CompanyBranch {
@@ -213,6 +216,8 @@ export interface CompanyDetail {
   name: string;
   isInternal: boolean;
   createdAtUtc: string;
+  createdByUserId: string | null;
+  createdByDisplayName: string | null;
   branches: CompanyBranch[];
   users: CompanyUser[];
 }

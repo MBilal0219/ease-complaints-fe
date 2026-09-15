@@ -90,6 +90,7 @@ const POLL_MS = 15_000;
                 <th class="px-4 py-2.5">Branches</th>
                 <th class="px-4 py-2.5">Users</th>
                 <th class="px-4 py-2.5">Created</th>
+                <th class="px-4 py-2.5">Added by</th>
               </tr>
             </thead>
             <tbody class="divide-y divide-slate-100">
@@ -104,10 +105,11 @@ const POLL_MS = 15_000;
                   <td class="px-4 py-2.5 text-slate-600">{{ company.branchCount }}</td>
                   <td class="px-4 py-2.5 text-slate-600">{{ company.userCount }}</td>
                   <td class="px-4 py-2.5 text-slate-600">{{ company.createdAtUtc | date: 'mediumDate' }}</td>
+                  <td class="px-4 py-2.5 text-slate-600">{{ company.createdByDisplayName ?? '—' }}</td>
                 </tr>
               } @empty {
                 <tr>
-                  <td colspan="4" class="px-4 py-8 text-center text-slate-500">No companies match this filter.</td>
+                  <td colspan="5" class="px-4 py-8 text-center text-slate-500">No companies match this filter.</td>
                 </tr>
               }
             </tbody>

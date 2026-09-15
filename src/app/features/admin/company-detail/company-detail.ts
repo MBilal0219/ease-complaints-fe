@@ -84,7 +84,9 @@ const DEFAULT_BRANCH_NAME = 'Head Office';
           }
         </div>
       }
-      <p class="mt-1 text-sm text-slate-500">Created {{ c.createdAtUtc | date: 'mediumDate' }} · {{ c.branches.length }} branch{{ c.branches.length === 1 ? '' : 'es' }}</p>
+      <p class="mt-1 text-sm text-slate-500">
+        Created {{ c.createdAtUtc | date: 'mediumDate' }}{{ c.createdByDisplayName ? ' by ' + c.createdByDisplayName : '' }} · {{ c.branches.length }} branch{{ c.branches.length === 1 ? '' : 'es' }}
+      </p>
 
       <!-- Branches + inline add-branch -->
       <div class="mt-5 rounded-lg border border-slate-200 bg-white p-4">

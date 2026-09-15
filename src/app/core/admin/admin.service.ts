@@ -2,6 +2,8 @@ import { HttpClient, HttpParams } from '@angular/common/http';
 import { Injectable, inject } from '@angular/core';
 import { Observable } from 'rxjs';
 import { environment } from '../../../environments/environment';
+import { AuthService } from '../auth/auth.service';
+import { ROLE_ADMIN, ROLE_IMPLEMENTATOR, ROLE_SALES_PERSON } from '../auth/models';
 import { CallDetailWithPayment, CallSummary, CustomerDirectoryEntry, PaymentFollowUpCustomer, PaymentFollowUpSummary, UpdateCallRequest } from '../sales-person/models';
 import { CallFilter } from '../sales-person/sales-person.service';
 import {
@@ -45,6 +47,21 @@ const STAFF_ROUTE: Record<StaffRole, string> = {
 @Injectable({ providedIn: 'root' })
 export class AdminService {
   private readonly http = inject(HttpClient);
+  private readonly authService = inject(AuthService);
+
+  /**
+   * Company management methods only — everything else in this service stays
+   * on the fixed Admin/Implementator route. TEMPORARY: routes a Sales
+   * Person caller to the interim `/api/v1/sales-person/companies...`
+   * endpoints (see Constants.SpecialAccess on the backend — one named
+   * Sales Person only, until the full permission system replaces this).
+   */
+  private get companiesBase(): string {
+    const roles = this.authService.currentUser()?.roles ?? [];
+    return roles.includes(ROLE_SALES_PERSON) && !roles.includes(ROLE_ADMIN) && !roles.includes(ROLE_IMPLEMENTATOR)
+      ? '/api/v1/sales-person'
+      : BASE;
+  }
 
   getDashboardStats(): Observable<DashboardStats> {
     return this.http.get<DashboardStats>(`${BASE}/dashboard`);
@@ -173,17 +190,17 @@ export class AdminService {
 
   /** Creates a brand-new Company + its first Branch, no owning User yet. See company-management.md. */
   createCompany(request: CreateCompanyRequest): Observable<BranchOption> {
-    return this.http.post<BranchOption>(`${BASE}/companies`, request);
+    return this.http.post<BranchOption>(`${this.companiesBase}/companies`, request);
   }
 
   /** Adds a Branch to an already-existing Company — customer or internal alike. */
   addBranch(companyId: string, request: CreateBranchRequest): Observable<BranchOption> {
-    return this.http.post<BranchOption>(`${BASE}/companies/${companyId}/branches`, request);
+    return this.http.post<BranchOption>(`${this.companiesBase}/companies/${companyId}/branches`, request);
   }
 
   /** Renames a Branch. */
   updateBranch(companyId: string, branchId: string, request: UpdateBranchRequest): Observable<BranchOption> {
-    return this.http.put<BranchOption>(`${BASE}/companies/${companyId}/branches/${branchId}`, request);
+    return this.http.put<BranchOption>(`${this.companiesBase}/companies/${companyId}/branches/${branchId}`, request);
   }
 
   getCompanies(dateFrom?: string, dateTo?: string, search?: string): Observable<CompanyListItem[]> {
@@ -191,7 +208,7 @@ export class AdminService {
     if (dateFrom) params = params.set('dateFrom', dateFrom);
     if (dateTo) params = params.set('dateTo', dateTo);
     if (search) params = params.set('search', search);
-    return this.http.get<CompanyListItem[]>(`${BASE}/companies`, { params });
+    return this.http.get<CompanyListItem[]>(`${this.companiesBase}/companies`, { params });
   }
 
   getCompaniesForReport(dateFrom?: string, dateTo?: string, search?: string): Observable<CompanyListItem[]> {
@@ -199,27 +216,27 @@ export class AdminService {
     if (dateFrom) params = params.set('dateFrom', dateFrom);
     if (dateTo) params = params.set('dateTo', dateTo);
     if (search) params = params.set('search', search);
-    return this.http.get<CompanyListItem[]>(`${BASE}/companies/all`, { params });
+    return this.http.get<CompanyListItem[]>(`${this.companiesBase}/companies/all`, { params });
   }
 
   getCompanyDetail(id: string): Observable<CompanyDetail> {
-    return this.http.get<CompanyDetail>(`${BASE}/companies/${id}`);
+    return this.http.get<CompanyDetail>(`${this.companiesBase}/companies/${id}`);
   }
 
   addCompanyUser(companyId: string, request: AddCompanyUserRequest): Observable<CompanyUser> {
-    return this.http.post<CompanyUser>(`${BASE}/companies/${companyId}/users`, request);
+    return this.http.post<CompanyUser>(`${this.companiesBase}/companies/${companyId}/users`, request);
   }
 
   updateCompany(id: string, request: UpdateCompanyRequest): Observable<CompanyDetail> {
-    return this.http.put<CompanyDetail>(`${BASE}/companies/${id}`, request);
+    return this.http.put<CompanyDetail>(`${this.companiesBase}/companies/${id}`, request);
   }
 
   updateCompanyUser(companyId: string, userId: string, request: UpdateCompanyUserRequest): Observable<CompanyUser> {
-    return this.http.put<CompanyUser>(`${BASE}/companies/${companyId}/users/${userId}`, request);
+    return this.http.put<CompanyUser>(`${this.companiesBase}/companies/${companyId}/users/${userId}`, request);
   }
 
   deleteCompanyUser(companyId: string, userId: string): Observable<void> {
-    return this.http.delete<void>(`${BASE}/companies/${companyId}/users/${userId}`);
+    return this.http.delete<void>(`${this.companiesBase}/companies/${companyId}/users/${userId}`);
   }
 
   setUserActive(id: string, isActive: boolean): Observable<void> {

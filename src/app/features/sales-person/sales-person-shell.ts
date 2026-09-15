@@ -1,4 +1,5 @@
-import { ChangeDetectionStrategy, Component } from '@angular/core';
+import { ChangeDetectionStrategy, Component, computed, inject } from '@angular/core';
+import { AuthService } from '../../core/auth/auth.service';
 import { SidebarLayout } from '../../layout/sidebar-layout/sidebar-layout';
 import { NavItem } from '../../layout/sidebar-layout/nav-item';
 
@@ -25,13 +26,30 @@ const SALES_PERSON_NAV_ITEMS: NavItem[] = [
   },
 ];
 
+/** TEMPORARY interim access — one named Sales Person only, until the full role/permission system replaces this. See Constants.SpecialAccess on the backend (backend enforces the real restriction regardless of this nav check). */
+const COMPANY_MANAGEMENT_ALLOWED_EMAIL = 'zerlish@eas.com';
+
+const COMPANIES_NAV_ITEM: NavItem = {
+  label: 'Companies',
+  route: '/app/sales-person/companies',
+  iconPath:
+    'M2.25 21h19.5m-18-18v18m10.5-18v18m6-13.5V21M6.75 6.75h.75m-.75 3h.75m-.75 3h.75m3-6h.75m-.75 3h.75m-.75 3h.75M6 21v-3.375c0-.621.504-1.125 1.125-1.125h2.25c.621 0 1.125.504 1.125 1.125V21',
+};
+
 /** Same shell/sidebar as Admin/Developer/User — only the nav items differ per role. */
 @Component({
   selector: 'app-sales-person-shell',
   imports: [SidebarLayout],
   changeDetection: ChangeDetectionStrategy.OnPush,
-  template: `<app-sidebar-layout [navItems]="navItems" />`,
+  template: `<app-sidebar-layout [navItems]="navItems()" />`,
 })
 export class SalesPersonShell {
-  protected readonly navItems = SALES_PERSON_NAV_ITEMS;
+  private readonly authService = inject(AuthService);
+
+  protected readonly navItems = computed<NavItem[]>(() => {
+    const email = this.authService.currentUser()?.email?.toLowerCase();
+    if (email !== COMPANY_MANAGEMENT_ALLOWED_EMAIL) return SALES_PERSON_NAV_ITEMS;
+    // Insert right after Leads, ahead of Settings.
+    return [...SALES_PERSON_NAV_ITEMS.slice(0, 3), COMPANIES_NAV_ITEM, ...SALES_PERSON_NAV_ITEMS.slice(3)];
+  });
 }

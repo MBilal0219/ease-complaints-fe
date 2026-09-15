@@ -149,6 +149,12 @@ export const routes: Routes = [
       { path: 'leads', loadComponent: () => import('./features/leads/leads-list/leads-list').then((m) => m.LeadsListPage) },
       { path: 'leads/new', loadComponent: () => import('./features/leads/lead-form/lead-form').then((m) => m.LeadFormPage) },
       { path: 'leads/:id', loadComponent: () => import('./features/leads/lead-detail/lead-detail').then((m) => m.LeadDetailPage) },
+      // Companies — TEMPORARY interim access, one named Sales Person only
+      // (see Constants.SpecialAccess on the backend). The nav link is hidden
+      // for everyone else; the backend enforces the real restriction either way.
+      { path: 'companies', loadComponent: () => import('./features/admin/companies/companies').then((m) => m.CompaniesPage) },
+      { path: 'companies/new', loadComponent: () => import('./features/admin/company-detail/company-detail').then((m) => m.CompanyDetailPage) },
+      { path: 'companies/:id', loadComponent: () => import('./features/admin/company-detail/company-detail').then((m) => m.CompanyDetailPage) },
       { path: 'settings', loadComponent: () => import('./features/sales-person/settings/settings').then((m) => m.SalesPersonSettingsPage) },
       { path: 'sessions', loadComponent: () => import('./features/auth/sessions/sessions').then((m) => m.SessionsPage) },
       { path: 'profile', loadComponent: () => import('./features/profile/profile').then((m) => m.ProfilePage) },
