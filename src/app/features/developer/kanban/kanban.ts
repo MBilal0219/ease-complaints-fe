@@ -5,11 +5,17 @@ import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { ActivatedRoute, Router, RouterLink } from '@angular/router';
 import { Subject, catchError, forkJoin, map, merge, of, switchMap, timer } from 'rxjs';
 import { AuthService } from '../../../core/auth/auth.service';
+import { PersonSummary } from '../../../core/admin/models';
 import { TicketsService } from '../../../core/tickets/tickets.service';
 import { RealtimeService } from '../../../core/realtime/realtime.service';
 import {
+  CategoryDto,
+  DeveloperWorkStatus,
+  ESTIMATE_UNITS,
+  EstimateUnit,
   HIGH_OR_URGENT_PRIORITY_VALUE,
   PENDING_STATUS_QUERY_VALUE,
+  PriorityDto,
   TICKET_STATUS_BADGE_CLASSES,
   TICKET_STATUS_LABELS,
   TICKET_TASK_STATUS_BADGE_CLASSES,
@@ -21,10 +27,12 @@ import {
   TicketTaskStatus,
   categoryBadgeClasses,
   formatDuration,
+  formatDurationFull,
   priorityBadgeClasses,
   priorityBorderClass,
 } from '../../../core/tickets/models';
 import { Pagination } from '../../../shared/ui/pagination/pagination';
+import { Modal } from '../../../shared/ui/modal/modal';
 
 const POLL_MS = 8_000;
 const TABLE_PAGE_SIZE = 10;
@@ -42,12 +50,12 @@ interface TaskCard {
 
 type ColumnKey = 'todo' | 'inprogress' | 'hold' | 'done' | 'closed';
 
-function columnFor(status: TicketTaskStatus): ColumnKey {
-  if (status === 'Assigned' || status === 'Reopened') return 'todo';
+function columnFor(status: DeveloperWorkStatus | null): ColumnKey {
+  if (!status || status === 'Assigned') return 'todo';
   if (status === 'InProgress') return 'inprogress';
   if (status === 'OnHold') return 'hold';
-  if (status === 'Resolved' || status === 'Sale') return 'done';
-  return 'closed'; // Rejected, Cancelled
+  if (status === 'Resolved' || status === 'Closed') return 'done';
+  return 'closed';
 }
 
 interface ColumnConfig {
@@ -55,7 +63,7 @@ interface ColumnConfig {
   label: string;
   borderClass: string;
   /** The status a drop into this column sets, or null if it doesn't accept drops. To Do never accepts one — a developer can't set a task back to Assigned (that's Admin/Implementator-only, see TicketTaskService.DeveloperAllowedTaskTargets) — but a To Do card can still be dragged OUT (see sourceDraggable). Done/Rejected are view-only in both directions — those transitions need a reason, which a drag can't collect (use the task's own detail on the ticket page instead). */
-  droppableStatus: TicketTaskStatus | null;
+  droppableStatus: DeveloperWorkStatus | null;
   sourceDraggable: boolean;
 }
 
@@ -87,7 +95,7 @@ function initials(name: string): string {
  */
 @Component({
   selector: 'app-kanban',
-  imports: [RouterLink, DatePipe, Pagination, FormsModule],
+  imports: [RouterLink, DatePipe, Pagination, FormsModule, Modal],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     <div class="flex flex-wrap items-center justify-between gap-3">
@@ -101,7 +109,9 @@ function initials(name: string): string {
           }
         </p>
       </div>
-      <div class="inline-flex rounded-md border border-slate-300 bg-white p-0.5 text-sm">
+      <div class="flex items-center gap-2">
+        <button type="button" (click)="openDirectWork()" class="rounded-md bg-indigo-600 px-3 py-2 text-sm font-medium text-white hover:bg-indigo-500">+ Add Direct Work</button>
+        <div class="inline-flex rounded-md border border-slate-300 bg-white p-0.5 text-sm">
         <button
           type="button"
           (click)="viewMode.set('board'); syncUrl()"
@@ -118,6 +128,7 @@ function initials(name: string): string {
         >
           All tickets
         </button>
+        </div>
       </div>
     </div>
 
@@ -164,11 +175,17 @@ function initials(name: string): string {
         </select>
         <input
           type="search"
-          placeholder="Search title/category…"
+          placeholder="Search title/company/category…"
           [ngModel]="search()"
           (ngModelChange)="search.set($event); tablePage.set(1)"
           class="rounded-md border border-slate-300 py-1.5 px-3 text-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"
         />
+        @if (pendingOnly()) {
+          <span class="inline-flex items-center gap-2 rounded-full bg-indigo-50 px-3 py-1.5 text-xs font-medium text-indigo-700">
+            Pending work only
+            <button type="button" (click)="pendingOnly.set(false); tablePage.set(1); syncUrl()" class="text-indigo-500 hover:text-indigo-800" aria-label="Clear pending work filter">×</button>
+          </span>
+        }
       </div>
     }
 
@@ -224,6 +241,7 @@ function initials(name: string): string {
                     </div>
                     <p class="mt-1.5 text-xs font-medium text-slate-700">{{ card.ticket.companyName || '—' }}</p>
                     <p class="text-xs text-slate-500">{{ card.ticket.createdByDisplayName || '—' }}</p>
+                    <p class="mt-1 text-[11px] text-indigo-600">Worked {{ formatDuration(card.task.actualWorkedMinutes) }} · Remaining {{ formatDuration(card.task.remainingEstimatedMinutes) }}</p>
                     <p class="mt-1.5 text-[11px] text-slate-400">Added by <span class="font-medium text-slate-600">{{ addedByLabel(card.task) }}</span></p>
                   </div>
                 } @empty {
@@ -254,10 +272,26 @@ function initials(name: string): string {
               <p class="font-mono text-xs text-slate-400">{{ card.ticket.ticketNumber }} · #{{ card.task.sequenceNumber }}</p>
               <h2 class="mt-1 pr-8 text-base font-semibold text-slate-900">{{ card.task.title || card.task.description }}</h2>
               <p class="mt-2 text-xs text-slate-500">
-                Time in progress: <span class="font-medium text-slate-700">{{ formatDuration(card.task.inProgressElapsedMinutes) }}</span>
+                Actual worked: <span class="font-medium text-slate-700">{{ formatDurationFull(card.task.actualWorkedMinutes) }}</span>
+                <span class="mx-1.5 text-slate-300">·</span>
+                Remaining: <span class="font-medium text-slate-700">{{ formatDurationFull(card.task.remainingEstimatedMinutes) }}</span>
               </p>
 
-              <p class="mt-4 text-[11px] font-semibold uppercase tracking-wide text-slate-400">History</p>
+              @if (card.task.workSpans.length > 0) {
+                <p class="mt-4 text-[11px] font-semibold uppercase tracking-wide text-slate-400">Work spans</p>
+                <div class="mt-1.5 space-y-2 rounded-md bg-indigo-50 p-3">
+                  @for (span of card.task.workSpans; track span.id) {
+                    <div class="text-xs text-slate-600">
+                      <span class="font-medium text-slate-800">{{ span.startedAtUtc | date: 'medium' }}</span>
+                      → <span>{{ span.endedAtUtc ? (span.endedAtUtc | date: 'medium') : 'Running' }}</span>
+                      <span class="ml-1 font-semibold text-indigo-700">({{ formatDuration(span.durationMinutes) }})</span>
+                      @if (span.endReason) { <span class="ml-1 text-slate-400">· {{ span.endReason }}</span> }
+                    </div>
+                  }
+                </div>
+              }
+
+              <p class="mt-4 text-[11px] font-semibold uppercase tracking-wide text-slate-400">Status history</p>
               <div class="mt-1.5 space-y-2.5 border-l-2 border-slate-100 pl-3">
                 @for (entry of card.task.activity; track entry.id) {
                   <div class="text-xs">
@@ -276,16 +310,23 @@ function initials(name: string): string {
         </div>
       }
     } @else {
-      <div class="mt-6 overflow-hidden rounded-lg border border-slate-200 bg-white">
+      <div class="mt-4 flex flex-wrap gap-4 text-sm text-slate-600">
+        <span>Filtered worked time: <strong class="text-indigo-700">{{ formatDurationFull(filteredWorkedMinutes()) }}</strong></span>
+        <span>Filtered remaining time: <strong class="text-indigo-700">{{ formatDurationFull(filteredRemainingMinutes()) }}</strong></span>
+      </div>
+      <div class="mt-3 overflow-hidden rounded-lg border border-slate-200 bg-white">
         <div class="overflow-x-auto">
           <table class="w-full text-left text-sm">
             <thead class="bg-slate-50 text-xs uppercase tracking-wide text-slate-500">
               <tr>
                 <th class="px-4 py-2.5">Ticket</th>
                 <th class="px-4 py-2.5">Title</th>
+                <th class="px-4 py-2.5">Company</th>
                 <th class="px-4 py-2.5">Status</th>
                 <th class="px-4 py-2.5">Priority</th>
                 <th class="px-4 py-2.5">Category</th>
+                <th class="px-4 py-2.5">Remaining</th>
+                <th class="px-4 py-2.5">Worked time</th>
                 <th class="px-4 py-2.5">Submitted</th>
               </tr>
             </thead>
@@ -294,6 +335,7 @@ function initials(name: string): string {
                 <tr class="cursor-pointer hover:bg-slate-50" [routerLink]="['/app/developer/tickets', ticket.id]">
                   <td class="px-4 py-2.5 font-mono text-xs text-slate-500">{{ ticket.ticketNumber }}</td>
                   <td class="px-4 py-2.5 font-medium text-slate-900">{{ ticket.title }}</td>
+                  <td class="px-4 py-2.5 text-slate-600">{{ ticket.companyName || '—' }}</td>
                   <td class="px-4 py-2.5">
                     <span class="rounded-full px-2 py-0.5 text-xs font-medium" [class]="statusClasses[ticket.status]">
                       {{ statusLabels[ticket.status] }}
@@ -305,11 +347,13 @@ function initials(name: string): string {
                     </span>
                   </td>
                   <td class="px-4 py-2.5 text-slate-600">{{ ticket.categoryName }}</td>
+                  <td class="px-4 py-2.5 font-medium text-indigo-700">{{ formatDurationFull(ticket.pendingMinutes) }}</td>
+                  <td class="px-4 py-2.5 font-medium text-emerald-700">{{ formatDurationFull(ticket.developerWorkedMinutes) }}</td>
                   <td class="px-4 py-2.5 text-slate-600">{{ ticket.createdAtUtc | date: 'mediumDate' }}</td>
                 </tr>
               } @empty {
                 <tr>
-                  <td colspan="6" class="px-4 py-8 text-center text-slate-500">No tickets have ever been assigned to you.</td>
+                  <td colspan="9" class="px-4 py-8 text-center text-slate-500">No tickets have ever been assigned to you.</td>
                 </tr>
               }
             </tbody>
@@ -319,12 +363,49 @@ function initials(name: string): string {
         <app-pagination
           [page]="tablePage()"
           [totalPages]="tableTotalPages()"
-          [totalItems]="allTickets().length"
+          [totalItems]="filteredTickets().length"
           [pageSize]="tablePageSizeValue"
           (pageChange)="tablePage.set($event)"
         />
       </div>
     }
+
+    <app-modal [open]="showDirectWork()" (close)="showDirectWork.set(false)">
+      <h2 class="text-base font-semibold text-slate-900">Add Direct Work</h2>
+      <p class="mt-1 text-sm text-slate-500">Record work you handled directly for a party. It will be assigned to you automatically.</p>
+      <div class="mt-4 space-y-3">
+        <div>
+          <label class="block text-sm font-medium text-slate-700">Party</label>
+          @if (directParty(); as party) {
+            <div class="mt-1 flex items-center justify-between rounded-md border border-indigo-200 bg-indigo-50 px-3 py-2 text-sm">
+              <span>{{ party.displayName }} · {{ party.companyName }}</span>
+              <button type="button" (click)="directParty.set(null)" class="text-xs font-medium text-indigo-600">Change</button>
+            </div>
+          } @else {
+            <input type="search" [(ngModel)]="directPartySearch" (ngModelChange)="searchDirectParties()" placeholder="Search party…" class="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm" />
+            @if (directPartyResults().length) {
+              <div class="mt-1 max-h-40 overflow-y-auto rounded-md border border-slate-200 p-1">
+                @for (party of directPartyResults(); track party.id) {
+                  <button type="button" (click)="directParty.set(party)" class="block w-full rounded px-2 py-1.5 text-left text-sm hover:bg-slate-50">{{ party.displayName }} · {{ party.companyName }}</button>
+                }
+              </div>
+            }
+          }
+        </div>
+        <div><label class="block text-sm font-medium text-slate-700">Title</label><input [(ngModel)]="directTitle" class="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm" /></div>
+        <div><label class="block text-sm font-medium text-slate-700">Description</label><textarea rows="3" [(ngModel)]="directDescription" class="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm"></textarea></div>
+        <div class="grid grid-cols-2 gap-3">
+          <div><label class="block text-sm font-medium text-slate-700">Category</label><select [(ngModel)]="directCategoryId" class="mt-1 w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm">@for (c of categories(); track c.id) { <option [value]="c.id">{{ c.name }}</option> }</select></div>
+          <div><label class="block text-sm font-medium text-slate-700">Priority</label><select [(ngModel)]="directPriorityId" class="mt-1 w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm">@for (p of priorities(); track p.id) { <option [value]="p.id">{{ p.name }}</option> }</select></div>
+        </div>
+        <div>
+          <label class="block text-sm font-medium text-slate-700">Estimated time</label>
+          <div class="mt-1 flex gap-2"><input type="number" min="1" [(ngModel)]="directEstimateValue" class="w-24 rounded-md border border-slate-300 px-2 py-2 text-sm" /><select [(ngModel)]="directEstimateUnit" class="rounded-md border border-slate-300 bg-white px-2 py-2 text-sm">@for (u of estimateUnits; track u) { <option [value]="u">{{ u }}</option> }</select></div>
+        </div>
+      </div>
+      @if (directError()) { <p class="mt-2 text-sm text-red-600">{{ directError() }}</p> }
+      <div class="mt-4 flex justify-end gap-2"><button type="button" (click)="showDirectWork.set(false)" class="rounded-md border border-slate-300 px-4 py-2 text-sm">Cancel</button><button type="button" (click)="createDirectWork()" [disabled]="directSaving() || !directParty() || !directTitle.trim() || directDescription.trim().length < 3 || !directCategoryId || !directPriorityId || !directEstimateValue || directEstimateValue <= 0" class="rounded-md bg-indigo-600 px-4 py-2 text-sm font-medium text-white disabled:opacity-50">{{ directSaving() ? 'Saving…' : 'Add work' }}</button></div>
+    </app-modal>
   `,
 })
 export class KanbanPage implements OnInit {
@@ -339,6 +420,7 @@ export class KanbanPage implements OnInit {
   protected readonly categoryBadgeClasses = categoryBadgeClasses;
   protected readonly priorityBorderClass = priorityBorderClass;
   protected readonly formatDuration = formatDuration;
+  protected readonly formatDurationFull = formatDurationFull;
   protected readonly taskStatusLabels = TICKET_TASK_STATUS_LABELS;
   protected readonly taskStatusBadgeClasses = TICKET_TASK_STATUS_BADGE_CLASSES;
 
@@ -351,6 +433,21 @@ export class KanbanPage implements OnInit {
 
   protected readonly viewMode = signal<ViewMode>('board');
   protected readonly errorMessage = signal<string | null>(null);
+  protected readonly showDirectWork = signal(false);
+  protected readonly directPartyResults = signal<PersonSummary[]>([]);
+  protected readonly directParty = signal<PersonSummary | null>(null);
+  protected readonly categories = signal<CategoryDto[]>([]);
+  protected readonly priorities = signal<PriorityDto[]>([]);
+  protected readonly directError = signal<string | null>(null);
+  protected readonly directSaving = signal(false);
+  protected readonly estimateUnits = ESTIMATE_UNITS;
+  protected directPartySearch = '';
+  protected directTitle = '';
+  protected directDescription = '';
+  protected directCategoryId: number | '' = '';
+  protected directPriorityId: number | '' = '';
+  protected directEstimateValue: number | null = null;
+  protected directEstimateUnit: EstimateUnit = 'Hours';
 
   // ---- Table view (unchanged from the previous ticket-level board) ----
   protected readonly allTickets = signal<TicketDto[]>([]);
@@ -358,24 +455,34 @@ export class KanbanPage implements OnInit {
   protected readonly search = signal('');
   protected readonly priorityFilter = signal('');
   protected readonly statusFilter = signal<TicketStatus | ''>('');
+  protected readonly pendingOnly = signal(false);
 
   protected readonly priorityOptions = computed(() => [...new Set(this.allTickets().map((t) => t.priorityName))].sort());
 
-  private readonly filteredTickets = computed(() => {
+  protected readonly filteredTickets = computed(() => {
     const term = this.search().trim().toLowerCase();
     const priority = this.priorityFilter();
     const status = this.statusFilter();
+    const pendingOnly = this.pendingOnly();
     return this.allTickets().filter((t) => {
+      if (pendingOnly) {
+        const ticketTerminal = ['Resolved', 'Rejected', 'Closed', 'Revoked', 'Cancelled', 'Sale'].includes(t.status);
+        const developerTerminal = t.developerWorkStatus != null && ['Resolved', 'Rejected', 'Cancelled', 'Closed'].includes(t.developerWorkStatus);
+        if (ticketTerminal || developerTerminal) return false;
+      }
       if (status && t.status !== status) return false;
       if (priority === HIGH_OR_URGENT_PRIORITY_VALUE) {
         if (t.priorityName !== 'High' && t.priorityName !== 'Urgent') return false;
       } else if (priority && t.priorityName !== priority) {
         return false;
       }
-      if (term && !t.title.toLowerCase().includes(term) && !t.categoryName.toLowerCase().includes(term)) return false;
+      if (term && !t.title.toLowerCase().includes(term) && !t.companyName.toLowerCase().includes(term) && !t.categoryName.toLowerCase().includes(term)) return false;
       return true;
     });
   });
+
+  protected readonly filteredWorkedMinutes = computed(() => this.filteredTickets().reduce((sum, ticket) => sum + (ticket.developerWorkedMinutes ?? 0), 0));
+  protected readonly filteredRemainingMinutes = computed(() => this.filteredTickets().reduce((sum, ticket) => sum + (ticket.pendingMinutes ?? 0), 0));
 
   protected readonly tableTotalPages = computed(() => Math.max(1, Math.ceil(this.filteredTickets().length / TABLE_PAGE_SIZE)));
   protected readonly pagedTickets = computed(() => {
@@ -411,13 +518,13 @@ export class KanbanPage implements OnInit {
     return this.cards().filter((c) => {
       if (ticketId && c.ticket.id !== ticketId) return false;
       if (!term) return true;
-      const haystack = `${c.ticket.ticketNumber} ${c.ticket.title} ${c.task.title ?? ''} ${c.task.description}`.toLowerCase();
+      const haystack = `${c.ticket.ticketNumber} ${c.ticket.title} ${c.ticket.companyName} ${c.task.title ?? ''} ${c.task.description}`.toLowerCase();
       return haystack.includes(term);
     });
   });
 
   cardsFor(columnKey: ColumnKey) {
-    return computed(() => this.filteredCards().filter((c) => columnFor(c.task.status) === columnKey));
+    return computed(() => this.filteredCards().filter((c) => columnFor(c.task.developerWorkStatus) === columnKey));
   }
 
   protected statusLabel(status: TicketTaskStatus): string {
@@ -444,16 +551,21 @@ export class KanbanPage implements OnInit {
   private readonly manualRefresh = new Subject<void>();
 
   ngOnInit(): void {
+    this.ticketsService.getLookups().subscribe((lookups) => {
+      this.categories.set(lookups.categories); this.priorities.set(lookups.priorities);
+      this.directCategoryId = lookups.categories[0]?.id ?? ''; this.directPriorityId = lookups.priorities[0]?.id ?? '';
+    });
     // Seeds from the URL once on load — covers the dashboard's stat-card
     // links (?view=table&status=X or &priority=Urgent|HighOrUrgent) as well
     // as a bookmarked/refreshed filtered view. Kept in sync going forward
     // via syncUrl(), so the URL always matches what's on screen.
     const params = this.route.snapshot.queryParamMap;
-    if (params.get('view') === 'table' || params.has('status') || params.has('priority')) {
+    if (params.get('view') === 'table' || params.has('status') || params.has('priority') || params.get('pending') === '1') {
       this.viewMode.set('table');
     }
     this.statusFilter.set((params.get('status') as TicketStatus | null) ?? '');
     this.priorityFilter.set(params.get('priority') ?? '');
+    this.pendingOnly.set(params.get('pending') === '1');
 
     merge(timer(0, POLL_MS), this.manualRefresh, this.realtimeService.notificationCreated$)
       .pipe(
@@ -492,6 +604,33 @@ export class KanbanPage implements OnInit {
       });
   }
 
+  openDirectWork(): void {
+    this.directParty.set(null); this.directPartyResults.set([]); this.directPartySearch = ''; this.directTitle = ''; this.directDescription = '';
+    this.directEstimateValue = null; this.directEstimateUnit = 'Hours'; this.directError.set(null);
+    this.directCategoryId = this.categories()[0]?.id ?? ''; this.directPriorityId = this.priorities()[0]?.id ?? ''; this.showDirectWork.set(true);
+  }
+
+  searchDirectParties(): void {
+    const term = this.directPartySearch.trim();
+    if (term.length < 2) { this.directPartyResults.set([]); return; }
+    this.ticketsService.getDeveloperParties(term).subscribe((r) => this.directPartyResults.set(r.items));
+  }
+
+  createDirectWork(): void {
+    const party = this.directParty();
+    if (!party || !this.directCategoryId || !this.directPriorityId || !this.directTitle.trim() || this.directDescription.trim().length < 3) return;
+    if (this.directEstimateValue == null || this.directEstimateValue <= 0) {
+      this.directError.set('Estimated time is required and must be greater than zero.');
+      return;
+    }
+    this.directSaving.set(true); this.directError.set(null);
+    this.ticketsService.createDirectWork({
+      partyUserId: party.id, title: this.directTitle.trim(), description: this.directDescription.trim(),
+      categoryId: Number(this.directCategoryId), priorityId: Number(this.directPriorityId),
+      estimateValue: this.directEstimateValue, estimateUnit: this.directEstimateUnit,
+    }).subscribe({ next: (t) => { this.directSaving.set(false); this.showDirectWork.set(false); this.manualRefresh.next(); this.router.navigate(['/app/developer/tickets', t.id]); }, error: (e) => { this.directSaving.set(false); this.directError.set(e.error?.error ?? 'Could not add direct work.'); } });
+  }
+
   /** Keeps the address bar matching what's actually filtered/viewed — no navigation/reload, just the query string. */
   syncUrl(): void {
     this.router.navigate([], {
@@ -500,6 +639,7 @@ export class KanbanPage implements OnInit {
         view: this.viewMode() === 'table' ? 'table' : null,
         status: this.statusFilter() || null,
         priority: this.priorityFilter() || null,
+        pending: this.pendingOnly() ? '1' : null,
       },
       replaceUrl: true,
     });
@@ -534,7 +674,7 @@ export class KanbanPage implements OnInit {
     }
   }
 
-  onDrop(event: DragEvent, targetStatus: TicketTaskStatus, columnKey: ColumnKey): void {
+  onDrop(event: DragEvent, targetStatus: DeveloperWorkStatus, columnKey: ColumnKey): void {
     event.preventDefault();
     this.dragOverColumn.set(null);
     this.draggingTaskId.set(null);
@@ -544,12 +684,16 @@ export class KanbanPage implements OnInit {
     const { ticketId, taskId } = JSON.parse(raw) as { ticketId: string; taskId: string };
 
     const card = this.cards().find((c) => c.task.id === taskId);
-    if (!card || columnFor(card.task.status) === columnKey) return;
-    // Only a plain In Progress/On Hold flip is drag-driven — Assigned isn't a developer-settable target at all, and anything terminal needs its own reason-required flow.
-    if (card.task.status !== 'Assigned' && card.task.status !== 'InProgress' && card.task.status !== 'OnHold' && card.task.status !== 'Reopened') return;
+    if (!card || columnFor(card.task.developerWorkStatus) === columnKey) return;
+    // Timer-safe drag transitions only: Assigned/OnHold → InProgress opens a span;
+    // InProgress → OnHold closes it. A To Do card cannot jump straight to Hold.
+    const current = card.task.developerWorkStatus ?? 'Assigned';
+    const allowed = (targetStatus === 'InProgress' && (current === 'Assigned' || current === 'OnHold'))
+      || (targetStatus === 'OnHold' && current === 'InProgress');
+    if (!allowed) return;
 
     this.errorMessage.set(null);
-    this.cards.update((cards) => cards.map((c) => (c.task.id === taskId ? { ...c, task: { ...c.task, status: targetStatus } } : c)));
+    this.cards.update((cards) => cards.map((c) => (c.task.id === taskId ? { ...c, task: { ...c.task, developerWorkStatus: targetStatus } } : c)));
 
     this.ticketsService.updateTaskStatusAsDeveloper(ticketId, taskId, targetStatus).subscribe({
       next: () => this.manualRefresh.next(),

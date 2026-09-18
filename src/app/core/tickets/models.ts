@@ -68,6 +68,8 @@ export interface TicketDto {
   companyName: string;
   assignedDeveloperId: string | null;
   assignedDeveloperDisplayName: string | null;
+  /** Developer-owned ticket assignment status, separate from the complaint business status. */
+  developerWorkStatus: DeveloperWorkStatus | null;
   createdAtUtc: string;
   updatedAtUtc: string;
   resolvedAtUtc: string | null;
@@ -82,11 +84,16 @@ export interface TicketDto {
   tasks: TicketTaskDto[] | null;
   /** Sum of every task's Amount, or null if none set. Independent of totalSubComplaintSaleAmount above (a separate, older mechanic). */
   totalTaskAmount: number | null;
+  /** Estimated minutes still pending on active tasks for this complaint. */
+  pendingMinutes: number;
+  /** Actual work minutes performed by the current Developer on this ticket (developer-scoped list only). */
+  developerWorkedMinutes: number;
 }
 
 // ---- Subcomplaints/tasks — see Entities/TicketTask.cs on the backend ----
 
 export type TicketTaskStatus = 'Pending' | 'Assigned' | 'InProgress' | 'OnHold' | 'Resolved' | 'Rejected' | 'Cancelled' | 'Reopened' | 'Sale';
+export type DeveloperWorkStatus = 'Assigned' | 'InProgress' | 'OnHold' | 'Resolved' | 'Rejected' | 'Cancelled' | 'Closed';
 
 export const TICKET_TASK_STATUS_LABELS: Record<TicketTaskStatus, string> = {
   Pending: 'Pending',
@@ -121,6 +128,17 @@ export interface TicketTaskEffort {
   effortMinutes: number;
 }
 
+export interface TicketTaskWorkSpan {
+  id: string;
+  developerId: string;
+  developerDisplayName: string;
+  startedAtUtc: string;
+  endedAtUtc: string | null;
+  durationMinutes: number;
+  endReason: string | null;
+  isOpen: boolean;
+}
+
 /**
  * One status transition on a task, rendered as a reply/activity entry
  * against the original subcomplaint — never a replacement of it.
@@ -150,6 +168,8 @@ export interface TicketTaskDto {
   status: TicketTaskStatus;
   currentDeveloperId: string | null;
   currentDeveloperDisplayName: string | null;
+  developerWorkStatus: DeveloperWorkStatus | null;
+  developerWorkStatusReason: string | null;
   estimatedMinutes: number | null;
   amount: number | null;
   lastRejectReason: string | null;
@@ -157,8 +177,14 @@ export interface TicketTaskDto {
   assignmentCount: number;
   totalEffortMinutes: number;
   perDeveloperEffort: TicketTaskEffort[];
-  /** The developer's actual work clock — every interval spent InProgress, paused by OnHold. Not the same as totalEffortMinutes above (which counts the whole time a developer has been assigned, regardless of pauses). */
+  /** Legacy compatibility alias; backend returns the same total as actualWorkedMinutes. */
   inProgressElapsedMinutes: number;
+  /** Sum of every Start/Resume → Hold/Final work span, including the currently-open span. */
+  actualWorkedMinutes: number;
+  /** Estimate minus actual worked time, floored at zero. Null when estimate is not set. */
+  remainingEstimatedMinutes: number | null;
+  /** Immutable work-span history. Reopen + Start creates a new row; old rows stay intact. */
+  workSpans: TicketTaskWorkSpan[];
   /** Files attached to this subcomplaint's own original submission. */
   attachments: TicketAttachmentDto[];
   /** The reply/activity feed — every status change with its reason and attachments. */
@@ -173,10 +199,18 @@ export interface TicketTaskDto {
 export interface CreateTicketTaskRequest {
   title?: string;
   description: string;
-  estimateValue?: number;
-  estimateUnit?: EstimateUnit;
+  estimateValue: number;
+  estimateUnit: EstimateUnit;
   amount?: number;
   files?: File[];
+}
+
+export interface UpdateTicketTaskRequest {
+  title?: string;
+  description: string;
+  estimateValue: number;
+  estimateUnit: EstimateUnit;
+  amount?: number | null;
 }
 
 /** The Party's own "submit a subcomplaint" request — Title is required (unlike CreateTicketTaskRequest's optional one). Every subcomplaint is Party-authored; the Implementator/Admin only triages it. */
@@ -245,11 +279,34 @@ export function formatDuration(minutes: number | null): string {
   return parts.join(' ');
 }
 
+/** Complaint/task total display using the same 30-day month approximation as the backend estimate normalizer. */
+export function formatDurationFull(minutes: number | null): string {
+  if (minutes == null) return '—';
+  let remaining = Math.max(0, Math.round(minutes));
+  const monthMinutes = MINUTES_PER_UNIT.Months;
+  const dayMinutes = MINUTES_PER_UNIT.Days;
+  const hourMinutes = MINUTES_PER_UNIT.Hours;
+  const months = Math.floor(remaining / monthMinutes);
+  remaining -= months * monthMinutes;
+  const days = Math.floor(remaining / dayMinutes);
+  remaining -= days * dayMinutes;
+  const hours = Math.floor(remaining / hourMinutes);
+  const mins = remaining - hours * hourMinutes;
+  const parts: string[] = [];
+  if (months) parts.push(`${months} ${months === 1 ? 'month' : 'months'}`);
+  if (days) parts.push(`${days} ${days === 1 ? 'day' : 'days'}`);
+  if (hours) parts.push(`${hours} ${hours === 1 ? 'hour' : 'hours'}`);
+  if (mins || parts.length === 0) parts.push(`${mins} ${mins === 1 ? 'minute' : 'minutes'}`);
+  return parts.join(' ');
+}
+
 export interface PagedResult<T> {
   items: T[];
   totalCount: number;
   page: number;
   pageSize: number;
+  /** Ticket-list aggregate across all rows matching the current filter, not just the current page. */
+  totalPendingMinutes?: number | null;
 }
 
 export interface CreateTicketRequest {
@@ -267,6 +324,20 @@ export interface CreateTicketAsImplementatorRequest {
   priorityId: number;
   /** Null/omitted = "no party". */
   partyUserId?: string | null;
+  /** Internal Task #1 planning fields. */
+  estimateValue: number;
+  estimateUnit: EstimateUnit;
+  amount?: number;
+}
+
+export interface CreateDirectWorkRequest {
+  partyUserId: string;
+  title: string;
+  description: string;
+  categoryId: number;
+  priorityId: number;
+  estimateValue: number;
+  estimateUnit: EstimateUnit;
 }
 
 export interface TicketFilter {
@@ -370,6 +441,10 @@ export interface DeveloperDashboardStats {
   closedCount: number;
   highPriorityActiveCount: number;
   urgentPriorityActiveCount: number;
+  pendingMinutes: number;
+  workedTodayMinutes: number;
+  workedThisWeekMinutes: number;
+  workedThisMonthMinutes: number;
 }
 
 /// Every status a New ticket can eventually reach, in the order the workflow visits them — used to render progress UI.

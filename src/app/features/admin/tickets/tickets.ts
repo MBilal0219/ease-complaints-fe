@@ -17,6 +17,7 @@ import {
   TicketDto,
   TicketFilter,
   adminStatusOptionsFor,
+  formatDurationFull,
   priorityBadgeClasses,
 } from '../../../core/tickets/models';
 import { Modal } from '../../../shared/ui/modal/modal';
@@ -47,7 +48,10 @@ type DateRangeFilter = '' | 'today' | 'last7days';
 
     <div class="mt-6 overflow-hidden rounded-lg border border-slate-200 bg-white">
       <div class="flex flex-wrap items-center justify-between gap-3 border-b border-slate-100 p-4">
-        <h2 class="text-sm font-semibold text-slate-900">All tickets ({{ result().totalCount }})</h2>
+        <div>
+          <h2 class="text-sm font-semibold text-slate-900">All tickets ({{ result().totalCount }})</h2>
+          <p class="mt-1 text-xs text-slate-500">Total pending time: <span class="font-semibold text-indigo-700">{{ formatDurationFull(result().totalPendingMinutes ?? 0) }}</span></p>
+        </div>
         <div class="flex flex-wrap items-center gap-2">
           <select
             [(ngModel)]="statusFilter"
@@ -80,7 +84,7 @@ type DateRangeFilter = '' | 'today' | 'last7days';
           <div class="relative">
             <input
               type="search"
-              placeholder="Search title/description…"
+              placeholder="Search title/company/description…"
               [(ngModel)]="search"
               (ngModelChange)="onFilterChange()"
               class="rounded-md border border-slate-300 py-1.5 px-3 text-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"
@@ -101,8 +105,9 @@ type DateRangeFilter = '' | 'today' | 'last7days';
                 <th class="px-4 py-2.5">Status</th>
                 <th class="px-4 py-2.5">Priority</th>
                 <th class="px-4 py-2.5">Party</th>
+                <th class="px-4 py-2.5">Company</th>
                 <th class="px-4 py-2.5">Developer</th>
-                <th class="px-4 py-2.5">Total amount</th>
+                <th class="px-4 py-2.5">Pending time</th>
                 <th class="px-4 py-2.5">Submitted</th>
               </tr>
             </thead>
@@ -123,16 +128,17 @@ type DateRangeFilter = '' | 'today' | 'last7days';
                       {{ ticket.priorityName }}
                     </span>
                   </td>
-                  <td class="cursor-pointer px-4 py-2.5 text-slate-600" [routerLink]="['/app/admin/tickets', ticket.id]">{{ ticket.createdByDisplayName }}</td>
+                  <td class="cursor-pointer px-4 py-2.5 text-slate-600" [routerLink]="['/app/admin/tickets', ticket.id]">{{ ticket.createdByDisplayName || '—' }}</td>
+                  <td class="cursor-pointer px-4 py-2.5 text-slate-600" [routerLink]="['/app/admin/tickets', ticket.id]">{{ ticket.companyName || '—' }}</td>
                   <td class="cursor-pointer px-4 py-2.5 text-slate-600" [routerLink]="['/app/admin/tickets', ticket.id]">{{ ticket.assignedDeveloperDisplayName ?? '—' }}</td>
-                  <td class="cursor-pointer px-4 py-2.5 text-slate-600" [routerLink]="['/app/admin/tickets', ticket.id]">
-                    {{ ticket.totalSubComplaintSaleAmount != null ? ticket.totalSubComplaintSaleAmount : '—' }}
+                  <td class="cursor-pointer px-4 py-2.5 font-medium text-indigo-700" [routerLink]="['/app/admin/tickets', ticket.id]">
+                    {{ formatDurationFull(ticket.pendingMinutes) }}
                   </td>
                   <td class="cursor-pointer px-4 py-2.5 text-slate-600" [routerLink]="['/app/admin/tickets', ticket.id]">{{ ticket.createdAtUtc | date: 'mediumDate' }}</td>
                 </tr>
               } @empty {
                 <tr>
-                  <td colspan="8" class="px-4 py-8 text-center text-slate-500">No tickets match this filter.</td>
+                  <td colspan="9" class="px-4 py-8 text-center text-slate-500">No tickets match this filter.</td>
                 </tr>
               }
             </tbody>
@@ -175,6 +181,7 @@ export class AdminTicketsPage implements OnInit {
   protected readonly statusLabels = TICKET_STATUS_LABELS;
   protected readonly statusOptions = STATUS_FILTERS;
   protected readonly priorityClasses = priorityBadgeClasses;
+  protected readonly formatDurationFull = formatDurationFull;
   protected readonly statusOptionsFor = (ticket: TicketDto) => adminStatusOptionsFor(ticket, true);
 
   private readonly ticketsService = inject(TicketsService);

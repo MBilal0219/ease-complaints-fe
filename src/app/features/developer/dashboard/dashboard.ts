@@ -3,7 +3,7 @@ import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { RouterLink } from '@angular/router';
 import { catchError, of, switchMap, timer } from 'rxjs';
 import { TicketsService } from '../../../core/tickets/tickets.service';
-import { DeveloperDashboardStats, HIGH_OR_URGENT_PRIORITY_VALUE } from '../../../core/tickets/models';
+import { DeveloperDashboardStats, HIGH_OR_URGENT_PRIORITY_VALUE, formatDurationFull } from '../../../core/tickets/models';
 
 interface StatCard {
   label: string;
@@ -68,6 +68,34 @@ const STATS_POLL_MS = 15_000;
         </a>
       </div>
 
+      <a
+        routerLink="/app/developer/board"
+        [queryParams]="{ view: 'table', pending: '1' }"
+        class="mt-4 block rounded-lg border-2 border-indigo-200 bg-indigo-50 p-5 transition-shadow hover:border-indigo-300 hover:shadow-md"
+      >
+        <div class="flex items-center justify-between gap-3">
+          <p class="text-sm font-semibold text-indigo-800">Remaining time</p>
+          <span class="text-xs font-medium text-indigo-600">View pending tickets →</span>
+        </div>
+        <p class="mt-2 text-3xl font-bold text-indigo-700">{{ formatDurationFull(s.pendingMinutes) }}</p>
+        <p class="mt-1 text-xs text-indigo-600">Estimate remaining after your actual recorded work</p>
+      </a>
+
+      <div class="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-3">
+        <div class="rounded-lg border border-emerald-200 bg-emerald-50 p-4">
+          <p class="text-xs font-medium text-emerald-700">Worked today</p>
+          <p class="mt-2 text-xl font-semibold text-emerald-800">{{ formatDurationFull(s.workedTodayMinutes) }}</p>
+        </div>
+        <div class="rounded-lg border border-emerald-200 bg-emerald-50 p-4">
+          <p class="text-xs font-medium text-emerald-700">Worked this week</p>
+          <p class="mt-2 text-xl font-semibold text-emerald-800">{{ formatDurationFull(s.workedThisWeekMinutes) }}</p>
+        </div>
+        <div class="rounded-lg border border-emerald-200 bg-emerald-50 p-4">
+          <p class="text-xs font-medium text-emerald-700">Worked this month</p>
+          <p class="mt-2 text-xl font-semibold text-emerald-800">{{ formatDurationFull(s.workedThisMonthMinutes) }}</p>
+        </div>
+      </div>
+
       <div class="mt-4 grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-6">
         @for (card of cards; track card.label) {
           <a
@@ -95,6 +123,7 @@ export class DeveloperDashboardPage implements OnInit {
   protected readonly stats = signal<DeveloperDashboardStats | null>(null);
   protected readonly loading = signal(true);
   protected readonly highOrUrgent = HIGH_OR_URGENT_PRIORITY_VALUE;
+  protected readonly formatDurationFull = formatDurationFull;
 
   ngOnInit(): void {
     timer(0, STATS_POLL_MS)

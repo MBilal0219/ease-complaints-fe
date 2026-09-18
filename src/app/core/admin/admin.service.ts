@@ -19,6 +19,8 @@ import {
   CreatePartyRequest,
   CreateSalesPersonRequest,
   DashboardStats,
+  DeveloperPendingTicketFilter,
+  DeveloperPendingTicketsResult,
   DeveloperWorkload,
   EmployeeProfileDetail,
   ImplementatorWorkload,
@@ -73,6 +75,20 @@ export class AdminService {
     if (dateFrom) params = params.set('dateFrom', dateFrom);
     if (dateTo) params = params.set('dateTo', dateTo);
     return this.http.get<DeveloperWorkload[]>(`${BASE}/dashboard/developers`, { params });
+  }
+
+  /** Current pending complaints for one developer, with server-side searchable filters. */
+  getDeveloperPendingTickets(developerId: string, filter: DeveloperPendingTicketFilter): Observable<DeveloperPendingTicketsResult> {
+    let params = new HttpParams()
+      .set('page', filter.page)
+      .set('pageSize', filter.pageSize);
+    if (filter.status) params = params.set('status', filter.status);
+    if (filter.companyId) params = params.set('companyId', filter.companyId);
+    if (filter.partyId) params = params.set('partyId', filter.partyId);
+    if (filter.categoryId != null) params = params.set('categoryId', filter.categoryId);
+    if (filter.priorityId != null) params = params.set('priorityId', filter.priorityId);
+    if (filter.search) params = params.set('search', filter.search);
+    return this.http.get<DeveloperPendingTicketsResult>(`${BASE}/dashboard/developers/${developerId}/pending`, { params });
   }
 
   /** Admin Dashboard's Sales drill-down cards — every Sales Person's workload within the given date range. */

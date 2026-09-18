@@ -11,6 +11,9 @@ export interface DashboardStats {
   rejectedCount: number;
   closedCount: number;
   pendingCount: number;
+  pendingTaskCount: number;
+  pendingMinutes: number;
+  unassignedPendingMinutes: number;
   newToday: number;
   newLast7Days: number;
   totalDeals: number;
@@ -33,6 +36,51 @@ export interface DeveloperWorkload {
   completedTasks: number;
   totalTasks: number;
   pendingAmount: number;
+  pendingMinutes: number;
+  /** Actual work-span minutes performed since Monday 00:00 UTC. */
+  doneThisWeekMinutes: number;
+  /** Actual work-span minutes performed since the first day of the current calendar month. */
+  doneThisMonthMinutes: number;
+}
+
+/** One complaint in a developer's current pending-work drill-down. Counts/time are scoped to that developer only. */
+export interface DeveloperPendingTicket {
+  ticketId: string;
+  ticketNumber: string;
+  title: string;
+  status: string;
+  priorityId: number;
+  priorityName: string;
+  categoryId: number;
+  categoryName: string;
+  partyId: string | null;
+  partyName: string;
+  companyId: string | null;
+  companyName: string;
+  pendingTaskCount: number;
+  pendingMinutes: number;
+  createdAtUtc: string;
+}
+
+export interface DeveloperPendingTicketFilter {
+  status?: string;
+  companyId?: string;
+  partyId?: string;
+  categoryId?: number;
+  priorityId?: number;
+  search?: string;
+  page: number;
+  pageSize: number;
+}
+
+export interface DeveloperPendingTicketsResult {
+  developerId: string;
+  developerDisplayName: string;
+  items: DeveloperPendingTicket[];
+  totalCount: number;
+  totalPendingMinutes: number;
+  page: number;
+  pageSize: number;
 }
 
 /** One sales person's workload card on the Admin Dashboard's Sales drill-down. referralCallsCount: calls logged to existing customers in range. leadCallsCount: follow-up calls made to referred people in range. dealsCount/leadCallsCount together are the "Total Active Sale" ratio (e.g. "2/4"). */

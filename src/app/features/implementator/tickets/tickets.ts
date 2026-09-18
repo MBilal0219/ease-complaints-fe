@@ -11,6 +11,8 @@ import { TicketsService } from '../../../core/tickets/tickets.service';
 import { RealtimeService } from '../../../core/realtime/realtime.service';
 import {
   CategoryDto,
+  ESTIMATE_UNITS,
+  EstimateUnit,
   PENDING_STATUS_QUERY_VALUE,
   PagedResult,
   PriorityDto,
@@ -19,6 +21,7 @@ import {
   TicketDto,
   TicketFilter,
   adminStatusOptionsFor,
+  formatDurationFull,
   priorityBadgeClasses,
 } from '../../../core/tickets/models';
 import { Modal } from '../../../shared/ui/modal/modal';
@@ -68,7 +71,10 @@ type DateRangeFilter = '' | 'today' | 'last7days';
 
     <div class="mt-6 overflow-hidden rounded-lg border border-slate-200 bg-white">
       <div class="flex flex-wrap items-center justify-between gap-3 border-b border-slate-100 p-4">
-        <h2 class="text-sm font-semibold text-slate-900">All complaints ({{ result().totalCount }})</h2>
+        <div>
+          <h2 class="text-sm font-semibold text-slate-900">All complaints ({{ result().totalCount }})</h2>
+          <p class="mt-1 text-xs text-slate-500">Total pending time: <span class="font-semibold text-indigo-700">{{ formatDurationFull(result().totalPendingMinutes ?? 0) }}</span></p>
+        </div>
         <div class="flex flex-wrap items-center gap-2">
           <select
             [(ngModel)]="statusFilter"
@@ -101,7 +107,7 @@ type DateRangeFilter = '' | 'today' | 'last7days';
           <div class="relative">
             <input
               type="search"
-              placeholder="Search title/description…"
+              placeholder="Search title/company/description…"
               [(ngModel)]="search"
               (ngModelChange)="onFilterChange()"
               class="rounded-md border border-slate-300 py-1.5 px-3 text-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"
@@ -122,8 +128,9 @@ type DateRangeFilter = '' | 'today' | 'last7days';
                 <th class="px-4 py-2.5">Status</th>
                 <th class="px-4 py-2.5">Priority</th>
                 <th class="px-4 py-2.5">Party</th>
+                <th class="px-4 py-2.5">Company</th>
                 <th class="px-4 py-2.5">Developer</th>
-                <th class="px-4 py-2.5">Total amount</th>
+                <th class="px-4 py-2.5">Pending time</th>
                 <th class="px-4 py-2.5">Submitted</th>
               </tr>
             </thead>
@@ -144,16 +151,17 @@ type DateRangeFilter = '' | 'today' | 'last7days';
                       {{ ticket.priorityName }}
                     </span>
                   </td>
-                  <td class="cursor-pointer px-4 py-2.5 text-slate-600" [routerLink]="['/app/implementator/tickets', ticket.id]">{{ ticket.createdByDisplayName }}</td>
+                  <td class="cursor-pointer px-4 py-2.5 text-slate-600" [routerLink]="['/app/implementator/tickets', ticket.id]">{{ ticket.createdByDisplayName || '—' }}</td>
+                  <td class="cursor-pointer px-4 py-2.5 text-slate-600" [routerLink]="['/app/implementator/tickets', ticket.id]">{{ ticket.companyName || '—' }}</td>
                   <td class="cursor-pointer px-4 py-2.5 text-slate-600" [routerLink]="['/app/implementator/tickets', ticket.id]">{{ ticket.assignedDeveloperDisplayName ?? '—' }}</td>
-                  <td class="cursor-pointer px-4 py-2.5 text-slate-600" [routerLink]="['/app/implementator/tickets', ticket.id]">
-                    {{ ticket.totalSubComplaintSaleAmount != null ? ticket.totalSubComplaintSaleAmount : '—' }}
+                  <td class="cursor-pointer px-4 py-2.5 font-medium text-indigo-700" [routerLink]="['/app/implementator/tickets', ticket.id]">
+                    {{ formatDurationFull(ticket.pendingMinutes) }}
                   </td>
                   <td class="cursor-pointer px-4 py-2.5 text-slate-600" [routerLink]="['/app/implementator/tickets', ticket.id]">{{ ticket.createdAtUtc | date: 'mediumDate' }}</td>
                 </tr>
               } @empty {
                 <tr>
-                  <td colspan="8" class="px-4 py-8 text-center text-slate-500">No tickets match this filter.</td>
+                  <td colspan="9" class="px-4 py-8 text-center text-slate-500">No tickets match this filter.</td>
                 </tr>
               }
             </tbody>
@@ -266,6 +274,21 @@ type DateRangeFilter = '' | 'today' | 'last7days';
             </select>
           </div>
         </div>
+        <div class="grid grid-cols-1 gap-3 sm:grid-cols-2">
+          <div>
+            <label class="block text-sm font-medium text-slate-700">Estimated time <span class="text-red-500">*</span></label>
+            <div class="mt-1 flex gap-2">
+              <input type="number" min="1" [(ngModel)]="newEstimateValue" class="w-28 rounded-md border border-slate-300 px-3 py-2 text-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500" />
+              <select [(ngModel)]="newEstimateUnit" class="rounded-md border border-slate-300 bg-white px-3 py-2 text-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500">
+                @for (unit of estimateUnits; track unit) { <option [value]="unit">{{ unit }}</option> }
+              </select>
+            </div>
+          </div>
+          <div>
+            <label class="block text-sm font-medium text-slate-700">Amount <span class="text-slate-400">(optional)</span></label>
+            <input type="number" min="0" step="0.01" [(ngModel)]="newAmount" class="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500" />
+          </div>
+        </div>
       </div>
 
       @if (createError()) {
@@ -277,7 +300,7 @@ type DateRangeFilter = '' | 'today' | 'last7days';
         <button
           type="button"
           (click)="createComplaint()"
-          [disabled]="creating() || !newTitle.trim() || newDescription.trim().length < 3 || !newCategoryId || !newPriorityId || (hasParty && !selectedParty())"
+          [disabled]="creating() || !newTitle.trim() || newDescription.trim().length < 3 || !newCategoryId || !newPriorityId || (hasParty && !selectedParty()) || !newEstimateValue || newEstimateValue <= 0"
           class="rounded-md bg-indigo-600 px-4 py-2 text-sm font-medium text-white hover:bg-indigo-500 disabled:opacity-50"
         >
           {{ creating() ? 'Creating…' : 'Create complaint' }}
@@ -291,6 +314,7 @@ export class ImplementatorTicketsPage implements OnInit {
   protected readonly statusLabels = TICKET_STATUS_LABELS;
   protected readonly statusOptions = STATUS_FILTERS;
   protected readonly priorityClasses = priorityBadgeClasses;
+  protected readonly formatDurationFull = formatDurationFull;
   protected readonly statusOptionsFor = (ticket: TicketDto) => adminStatusOptionsFor(ticket, true);
 
   private readonly ticketsService = inject(TicketsService);
@@ -324,6 +348,10 @@ export class ImplementatorTicketsPage implements OnInit {
   protected newDescription = '';
   protected newCategoryId: number | '' = '';
   protected newPriorityId: number | '' = '';
+  protected newEstimateValue: number | null = null;
+  protected newEstimateUnit: EstimateUnit = 'Hours';
+  protected newAmount: number | null = null;
+  protected readonly estimateUnits = ESTIMATE_UNITS;
   protected readonly creating = signal(false);
   protected readonly createError = signal<string | null>(null);
 
@@ -441,6 +469,9 @@ export class ImplementatorTicketsPage implements OnInit {
     this.newDescription = '';
     this.newCategoryId = this.categories()[0]?.id ?? '';
     this.newPriorityId = this.priorities()[0]?.id ?? '';
+    this.newEstimateValue = null;
+    this.newEstimateUnit = 'Hours';
+    this.newAmount = null;
     this.createError.set(null);
     this.showCreateComplaint.set(true);
   }
@@ -465,6 +496,10 @@ export class ImplementatorTicketsPage implements OnInit {
     const description = this.newDescription.trim();
     if (!title || description.length < 3 || !this.newCategoryId || !this.newPriorityId || this.creating()) return;
     if (this.hasParty && !this.selectedParty()) return;
+    if (this.newEstimateValue == null || this.newEstimateValue <= 0) {
+      this.createError.set('Estimated time is required and must be greater than zero.');
+      return;
+    }
 
     this.creating.set(true);
     this.createError.set(null);
@@ -475,6 +510,9 @@ export class ImplementatorTicketsPage implements OnInit {
         categoryId: Number(this.newCategoryId),
         priorityId: Number(this.newPriorityId),
         partyUserId: this.hasParty ? (this.selectedParty()?.id ?? null) : null,
+        estimateValue: this.newEstimateValue,
+        estimateUnit: this.newEstimateUnit,
+        amount: this.newAmount ?? undefined,
       })
       .subscribe({
         next: (ticket) => {

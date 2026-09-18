@@ -1,4 +1,4 @@
-import { DatePipe, NgTemplateOutlet } from '@angular/common';
+import { DatePipe, DecimalPipe, NgTemplateOutlet } from '@angular/common';
 import { HttpErrorResponse } from '@angular/common/http';
 import { ChangeDetectionStrategy, Component, inject, input, output, signal } from '@angular/core';
 import { environment } from '../../../../environments/environment';
@@ -20,7 +20,7 @@ import { Modal } from '../../../shared/ui/modal/modal';
  */
 @Component({
   selector: 'app-party-subcomplaints-panel',
-  imports: [DatePipe, NgTemplateOutlet, Modal, FileDropzone, AttachmentPreview],
+  imports: [DatePipe, DecimalPipe, NgTemplateOutlet, Modal, FileDropzone, AttachmentPreview],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     <div class="rounded-lg border border-slate-200 bg-white">
@@ -47,6 +47,9 @@ import { Modal } from '../../../shared/ui/modal/modal';
               <p class="mt-1 text-sm font-medium text-slate-900">{{ task.title }}</p>
             }
             <p class="mt-1 whitespace-pre-wrap text-sm text-slate-600">{{ task.description }}</p>
+            @if (task.status === 'Sale' && task.amount != null) {
+              <div class="mt-2 inline-flex rounded-md bg-fuchsia-50 px-2.5 py-1 text-sm font-semibold text-fuchsia-700">Sale amount: {{ task.amount | number: '1.0-2' }}</div>
+            }
 
             @if (task.attachments.length > 0) {
               <div class="mt-2 flex flex-wrap gap-2">

@@ -20,6 +20,7 @@ import {
   TicketSettings,
   TicketTaskDto,
   TicketTaskStatus,
+  UpdateTicketTaskRequest,
 } from './models';
 
 const TICKETS_BASE = '/api/v1/tickets';
@@ -133,6 +134,15 @@ export class TicketsService {
     return this.http.post<TicketDto>('/api/v1/admin/tickets', request);
   }
 
+  getDeveloperParties(search = ''): Observable<PagedResult<import('../admin/models').PersonSummary>> {
+    const params = search ? new HttpParams().set('search', search) : undefined;
+    return this.http.get<PagedResult<import('../admin/models').PersonSummary>>('/api/v1/developer/parties', { params });
+  }
+
+  createDirectWork(request: import('./models').CreateDirectWorkRequest): Observable<TicketDto> {
+    return this.http.post<TicketDto>('/api/v1/developer/direct-work', request);
+  }
+
   // ---- Subcomplaints/tasks — see TicketTaskDto ----
 
   getTasksAsAdmin(ticketId: string): Observable<TicketTaskDto[]> {
@@ -163,6 +173,10 @@ export class TicketsService {
     return this.http.post<TicketTaskDto>(`/api/v1/admin/tickets/${ticketId}/tasks`, form);
   }
 
+  updateTask(ticketId: string, taskId: string, request: UpdateTicketTaskRequest): Observable<TicketTaskDto> {
+    return this.http.put<TicketTaskDto>(`/api/v1/admin/tickets/${ticketId}/tasks/${taskId}`, request);
+  }
+
   assignTask(ticketId: string, taskId: string, developerId: string): Observable<TicketTaskDto> {
     return this.http.post<TicketTaskDto>(`/api/v1/admin/tickets/${ticketId}/tasks/${taskId}/assign`, { developerId });
   }
@@ -171,7 +185,7 @@ export class TicketsService {
     return this.http.patch<TicketTaskDto>(`/api/v1/admin/tickets/${ticketId}/tasks/${taskId}/status`, this.buildStatusForm(status, reason, files));
   }
 
-  updateTaskStatusAsDeveloper(ticketId: string, taskId: string, status: TicketTaskStatus, reason?: string, files?: File[]): Observable<TicketTaskDto> {
+  updateTaskStatusAsDeveloper(ticketId: string, taskId: string, status: import('./models').DeveloperWorkStatus, reason?: string, files?: File[]): Observable<TicketTaskDto> {
     return this.http.patch<TicketTaskDto>(`/api/v1/developer/tickets/${ticketId}/tasks/${taskId}/status`, this.buildStatusForm(status, reason, files));
   }
 
@@ -196,7 +210,7 @@ export class TicketsService {
     return this.http.put<TicketTaskDto>(`/api/v1/admin/tickets/${ticketId}/tasks/${taskId}/amount`, { amount });
   }
 
-  private buildStatusForm(status: TicketTaskStatus, reason?: string, files?: File[]): FormData {
+  private buildStatusForm(status: string, reason?: string, files?: File[]): FormData {
     const form = new FormData();
     form.set('Status', status);
     if (reason) form.set('Reason', reason);

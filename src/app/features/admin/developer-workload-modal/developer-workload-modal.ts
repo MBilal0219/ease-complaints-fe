@@ -5,6 +5,7 @@ import { RouterLink } from '@angular/router';
 import { catchError, of } from 'rxjs';
 import { AdminService } from '../../../core/admin/admin.service';
 import { DeveloperWorkload } from '../../../core/admin/models';
+import { formatDurationFull } from '../../../core/tickets/models';
 import { Modal } from '../../../shared/ui/modal/modal';
 
 /**
@@ -28,7 +29,7 @@ import { Modal } from '../../../shared/ui/modal/modal';
         <div class="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2">
           @for (row of rows(); track row.developerId) {
             <a
-              [routerLink]="detailBase() ? [detailBase(), row.developerId] : null"
+              [routerLink]="[pendingBase(), row.developerId]"
               (click)="dismiss()"
               class="block rounded-lg border border-slate-200 bg-white p-4 hover:border-slate-300 hover:shadow-md"
             >
@@ -42,6 +43,12 @@ import { Modal } from '../../../shared/ui/modal/modal';
                 <dd class="text-right font-medium text-emerald-700">{{ row.completedTasks }}</dd>
                 <dt class="text-slate-500">Total complaints assigned</dt>
                 <dd class="text-right font-medium text-slate-700">{{ row.totalTasks }}</dd>
+                <dt class="text-slate-500">Remaining time</dt>
+                <dd class="text-right font-semibold text-indigo-700">{{ formatDuration(row.pendingMinutes) }}</dd>
+                <dt class="text-slate-500">Done this week</dt>
+                <dd class="text-right font-medium text-emerald-700">{{ formatDuration(row.doneThisWeekMinutes) }}</dd>
+                <dt class="text-slate-500">Done this month</dt>
+                <dd class="text-right font-medium text-emerald-700">{{ formatDuration(row.doneThisMonthMinutes) }}</dd>
                 @if (!hidePendingAmount()) {
                   <dt class="text-slate-500">Estimated amount pending delivery</dt>
                   <dd class="text-right font-medium text-emerald-700">{{ row.pendingAmount | number: '1.0-2' }}</dd>
@@ -61,8 +68,8 @@ export class DeveloperWorkloadModal {
   /** Last-30-days by default — see AdminDashboardPage. */
   readonly dateFrom = input<string | undefined>(undefined);
   readonly dateTo = input<string | undefined>(undefined);
-  /** Route prefix for the per-developer click-through, or null to render the cards as non-links (e.g. from the Implementator dashboard, which has no developer detail page). */
-  readonly detailBase = input<string | null>('/app/admin/developers');
+  /** Route prefix for the current-pending-work drill-down opened by clicking a developer card. */
+  readonly pendingBase = input<string>('/app/admin/developer-workload');
   /** Implementator dashboard doesn't show payment/amount data — see ImplementatorDashboardPage. Defaults to false so the Admin dashboard is unaffected. */
   readonly hidePendingAmount = input<boolean>(false);
   readonly closed = output<void>();
@@ -87,6 +94,10 @@ export class DeveloperWorkloadModal {
             this.loading.set(false);
           });
       });
+  }
+
+  protected formatDuration(minutes: number): string {
+    return formatDurationFull(minutes);
   }
 
   dismiss(): void {

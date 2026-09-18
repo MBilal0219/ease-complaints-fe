@@ -1,12 +1,13 @@
 import { DatePipe, DecimalPipe, NgTemplateOutlet } from '@angular/common';
 import { HttpErrorResponse } from '@angular/common/http';
-import { ChangeDetectionStrategy, Component, HostListener, inject, input, output, signal } from '@angular/core';
+import { ChangeDetectionStrategy, Component, HostListener, computed, inject, input, output, signal } from '@angular/core';
 import { environment } from '../../../../environments/environment';
 import { PersonSummary } from '../../../core/admin/models';
 import {
   ACTIVE_TASK_STATUSES,
   ESTIMATE_UNITS,
   EstimateUnit,
+  DeveloperWorkStatus,
   TICKET_TASK_STATUS_BADGE_CLASSES,
   TICKET_TASK_STATUS_LABELS,
   TicketAttachmentDto,
@@ -14,13 +15,14 @@ import {
   TicketTaskDto,
   TicketTaskStatus,
   formatDuration,
+  formatDurationFull,
 } from '../../../core/tickets/models';
 import { TicketsService } from '../../../core/tickets/tickets.service';
 import { AttachmentPreview, PreviewItem } from '../../../shared/ui/attachment-preview/attachment-preview';
 import { FileDropzone } from '../../../shared/ui/file-dropzone/file-dropzone';
 import { Modal } from '../../../shared/ui/modal/modal';
 
-type TaskAction = 'assign' | 'status' | 'reject' | 'resolve' | 'cancel' | 'sale' | 'reopen' | 'estimate' | 'amount';
+type TaskAction = 'edit' | 'assign' | 'status' | 'reject' | 'resolve' | 'cancel' | 'close' | 'sale' | 'reopen' | 'estimate' | 'amount';
 
 /**
  * The complaint's subcomplaints/tasks — see Entities/TicketTask.cs on the
@@ -40,7 +42,16 @@ type TaskAction = 'assign' | 'status' | 'reject' | 'resolve' | 'cancel' | 'sale'
   template: `
     <div class="rounded-lg border border-slate-200 bg-white">
       <div class="flex flex-wrap items-center justify-between gap-3 border-b border-slate-100 p-4">
-        <h2 class="text-sm font-semibold text-slate-900">Tasks ({{ tasks().length }})</h2>
+        <div>
+          <h2 class="text-sm font-semibold text-slate-900">Tasks ({{ tasks().length }})</h2>
+          <p class="mt-1 text-xs text-slate-500">
+            Total estimate: <span class="font-semibold text-slate-700">{{ formatDurationFull(totalEstimatedMinutes()) }}</span>
+            @if (canManage()) {
+              <span class="mx-1.5 text-slate-300">·</span>
+              Total amount: <span class="font-semibold text-slate-700">{{ totalAmount() | number: '1.0-2' }}</span>
+            }
+          </p>
+        </div>
         @if (canManage() && ticketStatus() !== 'Closed' && ticketStatus() !== 'Revoked') {
           <button
             type="button"
@@ -61,9 +72,12 @@ type TaskAction = 'assign' | 'status' | 'reject' | 'resolve' | 'cancel' | 'sale'
                 <span class="rounded-full px-2 py-0.5 text-xs font-medium" [class]="statusBadgeClasses[task.status]">
                   {{ statusLabels[task.status] }}
                 </span>
+                @if (task.developerWorkStatus && canDeveloperSeeOwnStatus(task)) {
+                  <span class="rounded-full bg-indigo-50 px-2 py-0.5 text-xs font-medium text-indigo-700">My status: {{ task.developerWorkStatus }}</span>
+                }
               </div>
 
-              @if (canManage() || canDeveloperActOn(task)) {
+              @if (canManage() || canDeveloperActOn(task) || canDeveloperReopen(task)) {
                 <div class="relative" data-actions-menu>
                   <button
                     type="button"
@@ -79,6 +93,9 @@ type TaskAction = 'assign' | 'status' | 'reject' | 'resolve' | 'cancel' | 'sale'
                   @if (menuOpenTaskId() === task.id) {
                     <div class="absolute right-0 top-full z-20 mt-1 w-48 rounded-md border border-slate-200 bg-white py-1 shadow-lg">
                       @if (canManage()) {
+                        @if (task.status !== 'Resolved' && task.status !== 'Rejected' && task.status !== 'Cancelled' && task.status !== 'Sale') {
+                          <button type="button" (click)="menuAction(task, 'edit')" class="block w-full px-3 py-1.5 text-left text-sm font-medium text-indigo-700 hover:bg-slate-50">Edit task</button>
+                        }
                         @if (task.status !== 'Rejected' && task.status !== 'Cancelled' && task.status !== 'Sale') {
                           <button type="button" (click)="menuAction(task, 'assign')" class="block w-full px-3 py-1.5 text-left text-sm text-indigo-600 hover:bg-slate-50">
                             {{ task.currentDeveloperId ? 'Reassign' : 'Assign' }}
@@ -95,23 +112,31 @@ type TaskAction = 'assign' | 'status' | 'reject' | 'resolve' | 'cancel' | 'sale'
                           <button type="button" (click)="menuAction(task, 'reopen')" class="block w-full px-3 py-1.5 text-left text-sm text-sky-600 hover:bg-slate-50">Reopen</button>
                           <div class="my-1 border-t border-slate-100"></div>
                         }
-                        <button type="button" (click)="menuAction(task, 'estimate')" class="block w-full px-3 py-1.5 text-left text-sm text-slate-600 hover:bg-slate-50">Set estimate</button>
-                        <button type="button" (click)="menuAction(task, 'amount')" class="block w-full px-3 py-1.5 text-left text-sm text-slate-600 hover:bg-slate-50">Set amount</button>
+                        @if (task.status !== 'Resolved' && task.status !== 'Rejected' && task.status !== 'Cancelled' && task.status !== 'Sale') {
+                          <button type="button" (click)="menuAction(task, 'estimate')" class="block w-full px-3 py-1.5 text-left text-sm text-slate-600 hover:bg-slate-50">Set estimate</button>
+                          <button type="button" (click)="menuAction(task, 'amount')" class="block w-full px-3 py-1.5 text-left text-sm text-slate-600 hover:bg-slate-50">Set amount</button>
+                        }
                       }
                       @if (canDeveloperActOn(task)) {
-                        @if (task.status === 'Assigned' || task.status === 'Reopened') {
+                        @if (!task.developerWorkStatus || task.developerWorkStatus === 'Assigned') {
                           <button type="button" (click)="closeMenu(); developerSetStatus(task, 'InProgress')" class="block w-full px-3 py-1.5 text-left text-sm text-indigo-600 hover:bg-slate-50">Start progress</button>
                         }
-                        @if (task.status === 'InProgress') {
+                        @if (task.developerWorkStatus === 'InProgress') {
                           <button type="button" (click)="closeMenu(); developerSetStatus(task, 'OnHold')" class="block w-full px-3 py-1.5 text-left text-sm text-yellow-700 hover:bg-slate-50">Hold</button>
                         }
-                        @if (task.status === 'OnHold') {
+                        @if (task.developerWorkStatus === 'OnHold') {
                           <button type="button" (click)="closeMenu(); developerSetStatus(task, 'InProgress')" class="block w-full px-3 py-1.5 text-left text-sm text-indigo-600 hover:bg-slate-50">Resume</button>
                         }
-                        @if (task.status === 'Assigned' || task.status === 'InProgress' || task.status === 'OnHold' || task.status === 'Reopened') {
+                        @if (!isDeveloperWorkTerminal(task.developerWorkStatus)) {
+                          <div class="my-1 border-t border-slate-100"></div>
                           <button type="button" (click)="menuAction(task, 'resolve')" class="block w-full px-3 py-1.5 text-left text-sm text-green-600 hover:bg-slate-50">Mark resolved</button>
                           <button type="button" (click)="menuAction(task, 'reject')" class="block w-full px-3 py-1.5 text-left text-sm text-red-600 hover:bg-slate-50">Reject</button>
+                          <button type="button" (click)="menuAction(task, 'cancel')" class="block w-full px-3 py-1.5 text-left text-sm text-slate-600 hover:bg-slate-50">Cancel</button>
+                          <button type="button" (click)="menuAction(task, 'close')" class="block w-full px-3 py-1.5 text-left text-sm text-slate-700 hover:bg-slate-50">Close my work</button>
                         }
+                      }
+                      @if (canDeveloperReopen(task)) {
+                        <button type="button" (click)="developerReopen(task)" class="block w-full px-3 py-1.5 text-left text-sm font-medium text-sky-700 hover:bg-sky-50">Reopen my work</button>
                       }
                     </div>
                   }
@@ -136,19 +161,35 @@ type TaskAction = 'assign' | 'status' | 'reject' | 'resolve' | 'cancel' | 'sale'
               Developer: <span class="font-medium text-slate-700">{{ task.currentDeveloperDisplayName ?? 'Unassigned' }}</span>
               <span class="mx-1.5 text-slate-300">·</span>
               Estimate: <span class="font-medium text-slate-700">{{ formatDuration(task.estimatedMinutes) }}</span>
-              @if (task.amount != null) {
+              @if (canManage()) {
                 <span class="mx-1.5 text-slate-300">·</span>
-                Amount: <span class="font-medium text-slate-700">{{ task.amount | number: '1.0-2' }}</span>
+                Amount: <span class="font-medium text-slate-700">{{ (task.amount ?? 0) | number: '1.0-2' }}</span>
               }
-              @if (task.inProgressElapsedMinutes > 0) {
-                <span class="mx-1.5 text-slate-300">·</span>
-                Time in progress: <span class="font-medium text-slate-700">{{ formatDuration(task.inProgressElapsedMinutes) }}</span>
-              }
+              <span class="mx-1.5 text-slate-300">·</span>
+              Worked: <span class="font-medium text-emerald-700">{{ formatDuration(task.actualWorkedMinutes) }}</span>
+              <span class="mx-1.5 text-slate-300">·</span>
+              Remaining: <span class="font-medium text-indigo-700">{{ formatDuration(task.remainingEstimatedMinutes) }}</span>
               @if (task.assignmentCount > 0) {
                 <span class="mx-1.5 text-slate-300">·</span>
                 Assigned {{ task.assignmentCount }}×
               }
             </p>
+
+            @if (task.workSpans.length > 0) {
+              <details class="mt-2 rounded-md border border-slate-100 bg-slate-50 px-3 py-2">
+                <summary class="cursor-pointer text-xs font-medium text-slate-600">Work history ({{ task.workSpans.length }}) · Total {{ formatDuration(task.actualWorkedMinutes) }}</summary>
+                <div class="mt-2 space-y-1.5">
+                  @for (span of task.workSpans; track span.id) {
+                    <div class="text-xs text-slate-500">
+                      <span class="font-medium text-slate-700">{{ span.startedAtUtc | date: 'medium' }}</span>
+                      → <span>{{ span.endedAtUtc ? (span.endedAtUtc | date: 'medium') : 'Running' }}</span>
+                      <span class="ml-1 font-semibold text-indigo-700">{{ formatDuration(span.durationMinutes) }}</span>
+                      @if (span.endReason) { <span class="ml-1 text-slate-400">· {{ span.endReason }}</span> }
+                    </div>
+                  }
+                </div>
+              </details>
+            }
 
             @if (visibleActivity(task).length > 0) {
               <div class="mt-3 rounded-md bg-slate-50 p-2.5">
@@ -179,6 +220,32 @@ type TaskAction = 'assign' | 'status' | 'reject' | 'resolve' | 'cancel' | 'sale'
             @if (activeTaskId() === task.id && activeAction(); as action) {
               <div class="mt-3 space-y-2 rounded-md border border-indigo-200 bg-indigo-50 p-3">
                 @switch (action) {
+                  @case ('edit') {
+                    <div class="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                      <div class="sm:col-span-2">
+                        <label class="block text-xs font-medium text-slate-700">Title <span class="text-slate-400">(optional)</span></label>
+                        <input type="text" [value]="editTitle()" (input)="editTitle.set($any($event.target).value)" class="mt-1 w-full rounded-md border border-slate-300 px-2.5 py-1.5 text-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500" />
+                      </div>
+                      <div class="sm:col-span-2">
+                        <label class="block text-xs font-medium text-slate-700">Description</label>
+                        <textarea rows="3" [value]="editDescription()" (input)="editDescription.set($any($event.target).value)" class="mt-1 w-full rounded-md border border-slate-300 px-2.5 py-1.5 text-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"></textarea>
+                      </div>
+                      <div>
+                        <label class="block text-xs font-medium text-slate-700">Estimated time <span class="text-red-500">*</span></label>
+                        <div class="mt-1 flex gap-2">
+                          <input type="number" min="1" [value]="estimateValue()" (input)="estimateValue.set($any($event.target).value)" class="w-24 rounded-md border border-slate-300 px-2.5 py-1.5 text-sm" />
+                          <select [value]="estimateUnit()" (change)="estimateUnit.set($any($event.target).value)" class="rounded-md border border-slate-300 bg-white px-2.5 py-1.5 text-sm">
+                            @for (unit of estimateUnits; track unit) { <option [value]="unit">{{ unit }}</option> }
+                          </select>
+                        </div>
+                      </div>
+                      <div>
+                        <label class="block text-xs font-medium text-slate-700">Amount</label>
+                        <input type="number" min="0" step="0.01" [value]="amountInput()" (input)="amountInput.set($any($event.target).value)" class="mt-1 w-32 rounded-md border border-slate-300 px-2.5 py-1.5 text-sm" />
+                      </div>
+                    </div>
+                    <button type="button" (click)="saveTaskEdit(task)" [disabled]="busy() || editDescription().trim().length < 3 || !isPositiveNumber(estimateValue())" class="rounded-md bg-indigo-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-indigo-500 disabled:opacity-50">Save task</button>
+                  }
                   @case ('assign') {
                     <p class="text-xs font-medium text-slate-700">Assign to:</p>
                     <div class="max-h-40 space-y-1 overflow-y-auto">
@@ -243,12 +310,18 @@ type TaskAction = 'assign' | 'status' | 'reject' | 'resolve' | 'cancel' | 'sale'
                     <app-file-dropzone (filesChange)="actionFiles.set($event)" [maxFiles]="10" />
                     <button
                       type="button"
-                      (click)="setStatus(task, 'Cancelled')"
+                      (click)="isDeveloperReject(task) ? developerSetStatusWithReason(task, 'Cancelled') : setStatus(task, 'Cancelled')"
                       [disabled]="busy() || !reasonInput().trim()"
                       class="rounded-md bg-slate-700 px-3 py-1.5 text-xs font-medium text-white hover:bg-slate-600 disabled:opacity-50"
                     >
                       Confirm cancel
                     </button>
+                  }
+                  @case ('close') {
+                    <label class="block text-xs font-medium text-slate-700">Closing note (required)</label>
+                    <textarea rows="2" [value]="reasonInput()" (input)="reasonInput.set($any($event.target).value)" class="w-full rounded-md border border-slate-300 px-2.5 py-1.5 text-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"></textarea>
+                    <app-file-dropzone (filesChange)="actionFiles.set($event)" [maxFiles]="10" />
+                    <button type="button" (click)="developerSetStatusWithReason(task, 'Closed')" [disabled]="busy() || !reasonInput().trim()" class="rounded-md bg-slate-700 px-3 py-1.5 text-xs font-medium text-white hover:bg-slate-600 disabled:opacity-50">Confirm closed</button>
                   }
                   @case ('sale') {
                     <label class="block text-xs font-medium text-slate-700">Amount (required)</label>
@@ -353,8 +426,8 @@ type TaskAction = 'assign' | 'status' | 'reject' | 'resolve' | 'cancel' | 'sale'
         </div>
         <div class="flex flex-wrap items-end gap-2">
           <div>
-            <label class="block text-sm font-medium text-slate-700">Estimate <span class="text-slate-400">(optional)</span></label>
-            <input type="number" min="0" [value]="newTaskEstimateValue()" (input)="newTaskEstimateValue.set($any($event.target).value)" class="mt-1 w-24 rounded-md border border-slate-300 px-3 py-2 text-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500" />
+            <label class="block text-sm font-medium text-slate-700">Estimate <span class="text-red-500">*</span></label>
+            <input type="number" min="1" [value]="newTaskEstimateValue()" (input)="newTaskEstimateValue.set($any($event.target).value)" class="mt-1 w-24 rounded-md border border-slate-300 px-3 py-2 text-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500" />
           </div>
           <select [value]="newTaskEstimateUnit()" (change)="newTaskEstimateUnit.set($any($event.target).value)" class="rounded-md border border-slate-300 bg-white px-3 py-2 text-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500">
             @for (unit of estimateUnits; track unit) {
@@ -376,7 +449,7 @@ type TaskAction = 'assign' | 'status' | 'reject' | 'resolve' | 'cancel' | 'sale'
         <button
           type="button"
           (click)="addTask()"
-          [disabled]="busy() || newTaskDescription().trim().length < 3"
+          [disabled]="busy() || newTaskDescription().trim().length < 3 || !isPositiveNumber(newTaskEstimateValue())"
           class="rounded-md bg-indigo-600 px-4 py-2 text-sm font-medium text-white hover:bg-indigo-500 disabled:opacity-50"
         >
           {{ busy() ? 'Adding…' : 'Add task' }}
@@ -403,6 +476,9 @@ export class TicketTasksPanel {
   protected readonly statusBadgeClasses = TICKET_TASK_STATUS_BADGE_CLASSES;
   protected readonly estimateUnits = ESTIMATE_UNITS;
   protected readonly formatDuration = formatDuration;
+  protected readonly formatDurationFull = formatDurationFull;
+  protected readonly totalEstimatedMinutes = computed(() => this.tasks().reduce((total, task) => total + (task.estimatedMinutes ?? 0), 0));
+  protected readonly totalAmount = computed(() => this.tasks().reduce((total, task) => total + (task.amount ?? 0), 0));
 
   protected readonly menuOpenTaskId = signal<string | null>(null);
 
@@ -416,6 +492,8 @@ export class TicketTasksPanel {
   protected readonly estimateValue = signal('');
   protected readonly estimateUnit = signal<EstimateUnit>('Hours');
   protected readonly amountInput = signal('');
+  protected readonly editTitle = signal('');
+  protected readonly editDescription = signal('');
 
   protected readonly showAddTask = signal(false);
   protected readonly newTaskTitle = signal('');
@@ -465,7 +543,28 @@ export class TicketTasksPanel {
 
   protected canDeveloperActOn(task: TicketTaskDto): boolean {
     const devId = this.currentDeveloperId();
-    return !!devId && task.currentDeveloperId === devId && this.ticketStatus() !== 'Closed' && this.ticketStatus() !== 'Revoked';
+    const businessTerminal = ['Resolved', 'Rejected', 'Cancelled', 'Sale'].includes(task.status);
+    const ticketTerminal = ['Resolved', 'Rejected', 'Closed', 'Revoked', 'Sale'].includes(this.ticketStatus());
+    return !!devId && task.currentDeveloperId === devId && !businessTerminal && !ticketTerminal && !this.isDeveloperWorkTerminal(task.developerWorkStatus);
+  }
+
+  protected canDeveloperReopen(task: TicketTaskDto): boolean {
+    const devId = this.currentDeveloperId();
+    const businessTerminal = ['Resolved', 'Rejected', 'Cancelled', 'Sale'].includes(task.status);
+    const ticketTerminal = ['Resolved', 'Rejected', 'Closed', 'Revoked', 'Cancelled', 'Sale'].includes(this.ticketStatus());
+    return !!devId
+      && task.currentDeveloperId === devId
+      && !businessTerminal
+      && !ticketTerminal
+      && this.isDeveloperWorkTerminal(task.developerWorkStatus);
+  }
+
+  protected canDeveloperSeeOwnStatus(task: TicketTaskDto): boolean {
+    return !!this.currentDeveloperId() && task.currentDeveloperId === this.currentDeveloperId();
+  }
+
+  protected isDeveloperWorkTerminal(status: DeveloperWorkStatus | null | undefined): boolean {
+    return status === 'Resolved' || status === 'Rejected' || status === 'Cancelled' || status === 'Closed';
   }
 
   protected isDeveloperReject(task: TicketTaskDto): boolean {
@@ -509,6 +608,8 @@ export class TicketTasksPanel {
     this.estimateValue.set(task.estimatedMinutes != null ? String(task.estimatedMinutes) : '');
     this.estimateUnit.set('Minutes');
     this.amountInput.set(task.amount != null ? String(task.amount) : '');
+    this.editTitle.set(task.title ?? '');
+    this.editDescription.set(task.description);
   }
 
   closeAction(): void {
@@ -540,7 +641,7 @@ export class TicketTasksPanel {
     this.runMutation(() => this.ticketsService.updateTaskStatusAsAdmin(this.ticketId(), task.id, status, this.reasonInput().trim() || undefined, this.actionFiles()));
   }
 
-  developerSetStatus(task: TicketTaskDto, status: TicketTaskStatus): void {
+  developerSetStatus(task: TicketTaskDto, status: DeveloperWorkStatus): void {
     this.busy.set(true);
     this.actionError.set(null);
     this.ticketsService.updateTaskStatusAsDeveloper(this.ticketId(), task.id, status).subscribe({
@@ -555,8 +656,26 @@ export class TicketTasksPanel {
     });
   }
 
+  developerReopen(task: TicketTaskDto): void {
+    this.closeMenu();
+    const entered = window.prompt('Reason for reopening your work (optional):', '');
+    if (entered == null) return;
+    this.busy.set(true);
+    this.actionError.set(null);
+    this.ticketsService.updateTaskStatusAsDeveloper(this.ticketId(), task.id, 'Assigned', entered.trim() || 'Reopened by developer').subscribe({
+      next: () => {
+        this.busy.set(false);
+        this.changed.emit();
+      },
+      error: (error: HttpErrorResponse) => {
+        this.busy.set(false);
+        this.actionError.set(error.error?.error ?? 'Could not reopen this task.');
+      },
+    });
+  }
+
   /** Developer's own Resolve/Reject — both now go through the reason-required panel. */
-  developerSetStatusWithReason(task: TicketTaskDto, status: TicketTaskStatus): void {
+  developerSetStatusWithReason(task: TicketTaskDto, status: DeveloperWorkStatus): void {
     this.busy.set(true);
     this.actionError.set(null);
     this.ticketsService.updateTaskStatusAsDeveloper(this.ticketId(), task.id, status, this.reasonInput().trim(), this.actionFiles()).subscribe({
@@ -588,9 +707,31 @@ export class TicketTasksPanel {
     this.runMutation(() => this.ticketsService.reopenTask(this.ticketId(), task.id, this.reasonInput().trim()));
   }
 
+  isPositiveNumber(value: string): boolean {
+    const parsed = Number(value);
+    return value.trim().length > 0 && Number.isFinite(parsed) && parsed > 0;
+  }
+
+  saveTaskEdit(task: TicketTaskDto): void {
+    const description = this.editDescription().trim();
+    const estimateValue = Number(this.estimateValue());
+    const rawAmount = this.amountInput().trim();
+    const amount = rawAmount ? Number(rawAmount) : null;
+    if (description.length < 3 || !Number.isFinite(estimateValue) || estimateValue <= 0 || (amount != null && (!Number.isFinite(amount) || amount < 0))) return;
+    this.runMutation(() =>
+      this.ticketsService.updateTask(this.ticketId(), task.id, {
+        title: this.editTitle().trim() || undefined,
+        description,
+        estimateValue,
+        estimateUnit: this.estimateUnit(),
+        amount,
+      }),
+    );
+  }
+
   saveEstimate(task: TicketTaskDto): void {
     const value = Number(this.estimateValue());
-    if (!this.estimateValue() || Number.isNaN(value) || value < 0) return;
+    if (!this.estimateValue() || Number.isNaN(value) || value <= 0) return;
     this.runMutation(() => this.ticketsService.setTaskEstimate(this.ticketId(), task.id, value, this.estimateUnit()));
   }
 
@@ -605,7 +746,10 @@ export class TicketTasksPanel {
     const description = this.newTaskDescription().trim();
     if (description.length < 3 || this.busy()) return;
 
-    const estimateValue = this.newTaskEstimateValue() ? Number(this.newTaskEstimateValue()) : undefined;
+    const estimateValue = Number(this.newTaskEstimateValue());
+    const rawAmount = this.newTaskAmount().trim();
+    const amount = rawAmount ? Number(rawAmount) : undefined;
+    if (!Number.isFinite(estimateValue) || estimateValue <= 0 || (amount != null && (!Number.isFinite(amount) || amount < 0))) return;
     this.busy.set(true);
     this.addTaskError.set(null);
     this.ticketsService
@@ -613,8 +757,8 @@ export class TicketTasksPanel {
         title: this.newTaskTitle().trim() || undefined,
         description,
         estimateValue,
-        estimateUnit: estimateValue != null ? this.newTaskEstimateUnit() : undefined,
-        amount: this.newTaskAmount() ? Number(this.newTaskAmount()) : undefined,
+        estimateUnit: this.newTaskEstimateUnit(),
+        amount,
         files: this.newTaskFiles(),
       })
       .subscribe({
