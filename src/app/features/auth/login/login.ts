@@ -4,6 +4,7 @@ import { FormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
 import { Router, RouterLink } from '@angular/router';
 import { AuthService } from '../../../core/auth/auth.service';
 import { landingRouteForRoles } from '../../../core/auth/role-landing';
+import { PRODUCT_NAME } from '../../../core/branding/branding';
 import { PasswordInput } from '../../../shared/ui/password-input/password-input';
 
 @Component({
@@ -14,7 +15,7 @@ import { PasswordInput } from '../../../shared/ui/password-input/password-input'
     <div class="flex min-h-dvh items-center justify-center bg-slate-50 px-4">
       <div class="w-full max-w-sm rounded-xl border border-slate-200 bg-white p-8 shadow-sm">
         <h1 class="text-xl font-semibold text-slate-900">Sign in</h1>
-        <p class="mt-1 text-sm text-slate-500">Complaint Management System</p>
+        <p class="mt-1 text-sm text-slate-500">{{ productName }}</p>
 
         <form class="mt-6 space-y-4" [formGroup]="form" (ngSubmit)="submit()" novalidate>
           <div>
@@ -61,6 +62,7 @@ export class LoginPage {
   private readonly authService = inject(AuthService);
   private readonly router = inject(Router);
 
+  protected readonly productName = PRODUCT_NAME;
   protected readonly submitting = signal(false);
   protected readonly errorMessage = signal<string | null>(null);
 

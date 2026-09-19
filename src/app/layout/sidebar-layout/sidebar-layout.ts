@@ -3,6 +3,7 @@ import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { NavigationEnd, Router, RouterLink, RouterLinkActive, RouterOutlet } from '@angular/router';
 import { filter, interval, switchMap } from 'rxjs';
 import { AuthService } from '../../core/auth/auth.service';
+import { PRODUCT_NAME } from '../../core/branding/branding';
 import { RealtimeService } from '../../core/realtime/realtime.service';
 import { ToastService } from '../../core/toast/toast.service';
 import { NotificationBell } from '../../shared/ui/notification-bell/notification-bell';
@@ -241,7 +242,7 @@ const MOBILE_BREAKPOINT_PX = 768;
 })
 export class SidebarLayout implements OnInit {
   readonly navItems = input.required<NavItem[]>();
-  readonly productName = input<string>('Complaint Management System');
+  readonly productName = input<string>(PRODUCT_NAME);
   /** Extra links shown directly in the header, not nested in the sidebar's collapsible groups — e.g. the User shell's POS section. Empty for shells that don't need this (Admin/Developer). */
   readonly headerNavItems = input<NavItem[]>([]);
   /** Drops <main>'s default padding/scroll wrapper for a page that manages its own internal scrolling regions instead (the POS Terminal). */
